@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>遠端 Agent 工作台</title>
+<meta name="description" content="Windows 筆電 + Linux 伺服器：用 agent-deck 管 agent、Windows Terminal 走 SSH、VS Code + GitLens 看 git 狀態的設定與教學。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: 窄版說明文件 — 頂部標題＋三個角色卡，下方分頁（tab）切換主題，每個主題內用可收合的步驟。 */
+:root{
+  --bg:#f3f4f7; --surface:#ffffff; --surface-2:#eceef4; --line:#d9dce6;
+  --fg:#1b1e2b; --muted:#5b6074; --accent:#3346c8; --accent-soft:#e3e7fb;
+  --ok:#1f8a5b; --warn:#a86a06; --err:#c0392b; --idle:#7b8091;
+  --code-bg:#161925; --code-fg:#dfe3f2; --code-dim:#8a90a8;
+  --f-display:"Bricolage Grotesque","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12141c; --surface:#1a1d28; --surface-2:#222636; --line:#2f3447;
+  --fg:#e6e8f0; --muted:#9aa0b6; --accent:#8c9bff; --accent-soft:#252b4d;
+  --ok:#4fc58f; --warn:#e3a640; --err:#ef6b5b; --idle:#8d93a8;
+  --code-bg:#0c0e15; --code-fg:#dfe3f2; --code-dim:#7d849c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12141c; --surface:#1a1d28; --surface-2:#222636; --line:#2f3447;
+  --fg:#e6e8f0; --muted:#9aa0b6; --accent:#8c9bff; --accent-soft:#252b4d;
+  --ok:#4fc58f; --warn:#e3a640; --err:#ef6b5b; --idle:#8d93a8;
+  --code-bg:#0c0e15; --code-fg:#dfe3f2; --code-dim:#7d849c; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.7;margin:0}
+.wrap{max-width:960px;margin:0 auto;padding-inline:20px;padding-block:28px 64px}
+h1,h2,h3{font-family:var(--f-display);line-height:1.25;text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,5vw,40px);font-weight:800;letter-spacing:-.01em}
+h2{font-size:22px;font-weight:700}
+h3{font-size:17px;font-weight:700}
+p{margin:0}
+a{color:var(--accent)}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+.lede{color:var(--muted);max-width:65ch;margin-top:10px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.stack{display:flex;flex-direction:column;gap:14px}
+.roles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:22px}
+.cmp td:first-child{white-space:normal;min-width:7em}
+.cmp td{min-width:12em}
+.tag{display:inline-block;font:600 11px var(--f-mono);padding:0 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);margin-right:4px}
+.role{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.role b{display:block;font-family:var(--f-display);font-size:16px}
+.role span{color:var(--muted);font-size:14px}
+@media (max-width:720px){.roles{grid-template-columns:1fr}}
+/* tabs */
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);margin-top:26px;padding-block:8px;border-bottom:1px solid var(--line);display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin}
+.tab{appearance:none;border:0;background:none;color:var(--muted);font:500 14px var(--f-body);padding:8px 12px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.tab:hover{background:var(--surface-2);color:var(--fg)}
+.tab[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.tab:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.panel{padding-top:24px}
+.panel>.stack{gap:18px}
+/* blocks */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;min-width:0}
+.note{border-left:3px solid var(--warn);background:var(--surface);padding:12px 14px;border-radius:0 8px 8px 0;font-size:14px}
+.note.info{border-left-color:var(--accent)}
+.note.bad{border-left-color:var(--err)}
+ul,ol{margin:0;padding-left:1.3em}
+li+li{margin-top:4px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
+details+details{margin-top:10px}
+summary{cursor:pointer;list-style:none;padding:13px 16px;display:flex;gap:12px;align-items:baseline}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+summary .step{font-family:var(--f-mono);font-size:12px;color:var(--accent);min-width:2.2em}
+summary .t{font-weight:700}
+summary .where{margin-left:auto;font-family:var(--f-mono);font-size:11px;color:var(--muted);border:1px solid var(--line);padding:0 6px;border-radius:4px;white-space:nowrap}
+.dbody{padding:0 18px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+/* code */
+.code{position:relative;min-width:0}
+pre{margin:0;background:var(--code-bg);color:var(--code-fg);font:13px/1.6 var(--f-mono);padding:14px 16px;border-radius:8px;overflow-x:auto;white-space:pre}
+pre .c{color:var(--code-dim)}
+.copy{position:absolute;top:8px;right:8px;font:12px var(--f-body);background:var(--surface-2);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:2px 9px;cursor:pointer;opacity:.85}
+.copy:hover{opacity:1}
+/* tables */
+.tw{overflow-x:auto;min-width:0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td:first-child{white-space:nowrap;font-weight:600}
+/* architecture */
+.arch{display:grid;grid-template-columns:minmax(0,1fr) 120px minmax(0,1fr);gap:0;align-items:stretch}
+.box{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--surface);min-width:0}
+.box h3{font-size:14px;color:var(--muted);font-family:var(--f-mono);font-weight:600;letter-spacing:.04em;margin-bottom:8px}
+.box .item{background:var(--surface-2);border-radius:7px;padding:7px 10px;font-size:13.5px;margin-top:6px}
+.box .item small{display:block;color:var(--muted);font-size:12px}
+.pipe{display:flex;flex-direction:column;justify-content:center;gap:16px;padding:0 8px}
+.pipe div{font:12px var(--f-mono);color:var(--accent);text-align:center;border-top:2px dashed var(--accent);padding-top:4px}
+@media (max-width:720px){.arch{grid-template-columns:1fr}.pipe{flex-direction:row;padding:10px 0}.pipe div{flex:1}}
+/* status pills */
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 12px var(--f-mono);padding:1px 8px;border-radius:99px;border:1px solid var(--line);white-space:nowrap}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.p-run{color:var(--ok)}.p-wait{color:var(--warn)}.p-idle{color:var(--idle)}.p-err{color:var(--err)}.p-stop{color:var(--muted)}
+kbd{font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--surface)}
+/* sub-nav inside UI panel */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:99px;padding:4px 12px;font:500 13px var(--f-body);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+/* prompt builder */
+.vars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+@media (max-width:720px){.vars{grid-template-columns:1fr}}
+.vars label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted);min-width:0}
+.vars label b{color:var(--fg);font-family:var(--f-mono);font-size:12px}
+.vars input{font:14px var(--f-mono);padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--fg);min-width:0;width:100%}
+#prompt-out{max-height:520px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btn{appearance:none;border:1px solid var(--accent);background:var(--accent);color:var(--surface);font:600 14px var(--f-body);padding:7px 14px;border-radius:8px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+@media (prefers-reduced-motion:reduce){summary::before{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Windows 筆電 → Linux 伺服器</div>
+    <h1>遠端 Agent 工作台</h1>
+    <p class="lede">Claude Code、Codex 這類 agent 都跑在遠端 Linux 伺服器（例如 cloud6）上，筆電關機也不會停。筆電只負責三件事：連線、管理 agent、看 git 狀態。管理 agent 有兩套工具可選：瀏覽器介面的 agent-deck，或終端機介面的 herdr，兩者可以並存。</p>
+    <div class="roles">
+      <div class="role"><b>agent-deck</b><span>管 agent（瀏覽器）：開新的 agent、看每個 agent 在跑、在等你、還是出錯，並在網頁裡直接操作。</span></div>
+      <div class="role"><b>herdr</b><span>管 agent（終端機）：agent 專用的多工器，側欄自動顯示狀態，agent 之間還能互相傳訊息、分工。</span></div>
+      <div class="role"><b>Windows Terminal</b><span>用 SSH 連到遠端 Linux 伺服器：deck 分頁（兼網頁隧道）、herdr 分頁、一般 shell 分頁。</span></div>
+      <div class="role"><b>VS Code + GitLens</b><span>用 Remote-SSH 開伺服器上的 repo，只顯示你選的 repo，用 GitLens 看分支、提交與變更。</span></div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="主題">
+    <button class="tab" role="tab" id="t-overview" aria-controls="overview">架構</button>
+    <button class="tab" role="tab" id="t-setup" aria-controls="setup">agent-deck 設定</button>
+    <button class="tab" role="tab" id="t-ui" aria-controls="ui">agent-deck 介面</button>
+    <button class="tab" role="tab" id="t-herdr" aria-controls="herdr">herdr</button>
+    <button class="tab" role="tab" id="t-compare" aria-controls="compare">herdr vs agent-deck</button>
+    <button class="tab" role="tab" id="t-daily" aria-controls="daily">日常使用</button>
+    <button class="tab" role="tab" id="t-maint" aria-controls="maint">更新與移除</button>
+    <button class="tab" role="tab" id="t-trouble" aria-controls="trouble">疑難排解</button>
+    <button class="tab" role="tab" id="t-prompt" aria-controls="prompt">一鍵設定 Prompt</button>
+  </nav>
+
+  <!-- ============ 架構 ============ -->
+  <section class="panel" id="overview" role="tabpanel" aria-labelledby="t-overview">
+    <div class="stack">
+      <div class="arch">
+        <div class="box">
+          <h3>WINDOWS 筆電</h3>
+          <div class="item">Windows Terminal「&lt;別名&gt; · deck」<small>ssh &lt;別名&gt;-deck，帶 <code>LocalForward &lt;PORT&gt;</code> 隧道</small></div>
+          <div class="item">Windows Terminal「&lt;別名&gt; · shell」<small>ssh &lt;別名&gt;，一般 shell，可開多個</small></div>
+          <div class="item">瀏覽器 <code>http://localhost:&lt;PORT&gt;</code><small>agent-deck 網頁，經由上面的隧道</small></div>
+          <div class="item">Windows Terminal「&lt;別名&gt; · herdr」<small>ssh -t &lt;別名&gt; "bash -lc herdr"，herdr 的畫面</small></div>
+          <div class="item">VS Code Remote-SSH + GitLens<small>開 <code>&lt;REPO_ROOT&gt;/&lt;名稱&gt;.code-workspace</code></small></div>
+        </div>
+        <div class="pipe" aria-hidden="true"><div>SSH</div><div>隧道</div><div>Remote-SSH</div></div>
+        <div class="box">
+          <h3>LINUX 伺服器</h3>
+          <div class="item">tmux session <code>deck</code><small>agent-deck 網頁伺服器（headless），只綁 127.0.0.1:&lt;PORT&gt;，要 token</small></div>
+          <div class="item">tmux session <code>agentdeck_*</code><small>每個 agent 一個（claude / codex / shell…），由 agent-deck 建立</small></div>
+          <div class="item">agent-deck TUI<small>開 deck 分頁時在 SSH 連線裡執行，關掉分頁就結束，不影響上面兩者</small></div>
+          <div class="item">herdr 伺服器（背景常駐）<small>工作區／分頁／pane，每個 pane 是真的終端機，裡面跑 claude、codex；斷線不影響</small></div>
+          <div class="item">你原本的 tmux session<small>完全不受影響</small></div>
+        </div>
+      </div>
+
+      <div class="card stack">
+        <h2>幾個關鍵觀念</h2>
+        <ul>
+          <li><b>agent 一律從 agent-deck 開</b>，才會出現在監控畫面。自己在 tmux 手動開的 claude 不會被追蹤。</li>
+          <li><b>斷線不影響工作</b>：網頁伺服器和所有 agent 都在伺服器的 tmux 裡。關掉 Windows Terminal、筆電關機，agent 都會繼續跑。</li>
+          <li><b>網頁要靠隧道才看得到</b>：網頁只綁伺服器的 127.0.0.1，筆電要開著「deck」分頁（或任何帶隧道的 SSH 連線），瀏覽器才連得到。</li>
+          <li><b>為什麼要 token</b>：伺服器若是多人共用，其他帳號在伺服器上也連得到 127.0.0.1。這個網頁能以你的身分執行任何指令，所以要 token 擋住。token 只需在瀏覽器輸入一次，之後 cookie 會記住。</li>
+          <li><b>不建議開到 0.0.0.0</b>：HTTP 明碼傳 token、整個內網都碰得到，而且瀏覽器只在 https 或 localhost 允許推播通知。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 設定步驟 ============ -->
+  <section class="panel" id="setup" role="tabpanel" aria-labelledby="t-setup" hidden>
+    <div class="stack">
+      <div class="note info">以下用尖括號表示每個人不同的值。最快的方法是到「一鍵設定 Prompt」分頁填好值，把 prompt 交給 Claude Code 自動做完；這裡是手動步驟，也方便你看懂 agent 做了什麼。</div>
+      <div class="card tw">
+        <table>
+          <thead><tr><th>代號</th><th>意思</th><th>範例</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;HOST&gt;</td><td>伺服器 IP 或主機名稱</td><td class="muted">10.x.x.x</td></tr>
+            <tr><td>&lt;USER&gt; / &lt;SSH_PORT&gt;</td><td>SSH 帳號與 port</td><td class="muted">alice / 22</td></tr>
+            <tr><td>&lt;KEY&gt;</td><td>筆電上的私鑰路徑</td><td class="muted">C:\Users\alice\.ssh\id_ed25519</td></tr>
+            <tr><td>&lt;ALIAS&gt;</td><td>SSH 別名，也是 Windows Terminal 分頁名稱</td><td class="muted">cloud6、devbox</td></tr>
+            <tr><td>&lt;PORT&gt;</td><td>agent-deck 網頁 port（兩端相同）</td><td class="muted">12021（預設 8420）</td></tr>
+            <tr><td>&lt;REPO_ROOT&gt;</td><td>伺服器上放 repo 的資料夾（絕對路徑）</td><td class="muted">/home/alice/repository</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details open>
+        <summary><span class="step">00</span><span class="t">前置需求</span><span class="where">兩端</span></summary>
+        <div class="dbody">
+          <ul>
+            <li><b>筆電</b>：Windows 10/11、Windows Terminal、內建 OpenSSH client（<code>ssh -V</code>）、VS Code 加上擴充套件 <b>Remote - SSH</b> 與 <b>GitLens</b>。</li>
+            <li><b>伺服器</b>：Linux、tmux 3.3 以上、<code>curl</code>、<code>jq</code>；<code>claude</code> 與（可選）<code>codex</code> 已安裝並登入。</li>
+            <li>能用金鑰從筆電 SSH 登入伺服器。第一次連線的 host key 確認要自己手動做一次。</li>
+          </ul>
+          <div class="note">需要 <code>sudo</code> 的安裝（例如 tmux、jq）請自己決定。agent-deck 本身裝在 <code>~/.local/bin</code>，不需要 sudo。</div>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">01</span><span class="t">筆電 SSH 設定</span><span class="where">筆電 ~/.ssh/config</span></summary>
+        <div class="dbody">
+          <p>先備份 <code>%USERPROFILE%\.ssh\config</code>，再加入兩個別名。<code>&lt;ALIAS&gt;-deck</code> 多一行隧道，只給 deck 分頁用，避免多個連線搶同一個 port。</p>
+          <div class="code"><pre># &gt;&gt;&gt; agent-workflow &gt;&gt;&gt;
+Host &lt;ALIAS&gt;
+    HostName &lt;HOST&gt;
+    User &lt;USER&gt;
+    Port &lt;SSH_PORT&gt;
+    IdentityFile &lt;KEY&gt;
+    ServerAliveInterval 30
+    ServerAliveCountMax 4
+
+Host &lt;ALIAS&gt;-deck
+    HostName &lt;HOST&gt;
+    User &lt;USER&gt;
+    Port &lt;SSH_PORT&gt;
+    IdentityFile &lt;KEY&gt;
+    ServerAliveInterval 30
+    ServerAliveCountMax 4
+    LocalForward &lt;PORT&gt; 127.0.0.1:&lt;PORT&gt;
+# &lt;&lt;&lt; agent-workflow &lt;&lt;&lt;</pre></div>
+          <p class="small muted">驗證：<code>ssh &lt;ALIAS&gt; echo ok</code> 印出 ok。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">02</span><span class="t">伺服器 PATH 與 tmux 設定</span><span class="where">伺服器</span></summary>
+        <div class="dbody">
+          <p><b>PATH</b>：如果 <code>claude</code>／<code>codex</code> 只寫在 <code>.bashrc</code>（例如裝在 <code>~/.npm-global/bin</code> 或 nvm 下），登入 shell 會找不到，agent-deck 也就開不起 agent。先確認：</p>
+          <div class="code"><pre>bash -lc 'command -v claude codex agent-deck'</pre></div>
+          <p>找不到的話，備份 <code>~/.profile</code> 後在檔尾加上（目錄換成 <code>command -v claude</code> 在互動 shell 裡的實際位置）：</p>
+          <div class="code"><pre># &gt;&gt;&gt; agent-workflow &gt;&gt;&gt;
+case ":$PATH:" in *":&lt;CLAUDE_BIN_DIR&gt;:"*) ;; *) PATH="&lt;CLAUDE_BIN_DIR&gt;:$PATH" ;; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+export PATH
+# &lt;&lt;&lt; agent-workflow &lt;&lt;&lt;</pre></div>
+          <p><b>tmux</b>：備份 <code>~/.tmux.conf</code>（若有），在檔尾加上，然後 <code>tmux source-file ~/.tmux.conf</code>（不會中斷既有 session）。這讓 Claude Code 在 tmux 裡的 Shift+Enter、通知與滑鼠捲動正常。</p>
+          <div class="code"><pre># &gt;&gt;&gt; agent-workflow &gt;&gt;&gt;
+set -g mouse on
+set -g allow-passthrough on
+set -s extended-keys on
+set -as terminal-features 'xterm*:extkeys'
+# &lt;&lt;&lt; agent-workflow &lt;&lt;&lt;</pre></div>
+          <div class="note">開了 <code>mouse on</code> 之後，在 Windows Terminal 要<b>按住 Shift 再拖曳</b>才能選取複製文字。</div>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">03</span><span class="t">安裝 agent-deck 與狀態 hooks</span><span class="where">伺服器</span></summary>
+        <div class="dbody">
+          <p>先下載安裝腳本看過，再執行。<code>--skip-tmux-config</code> 讓它不要改你的 tmux 設定。</p>
+          <div class="code"><pre>curl -fsSL https://raw.githubusercontent.com/asheshgoplani/agent-deck/main/install.sh -o /tmp/agent-deck-install.sh
+less /tmp/agent-deck-install.sh      <span class="c"># 看過內容</span>
+bash /tmp/agent-deck-install.sh --non-interactive --skip-tmux-config
+bash -lc 'agent-deck version'</pre></div>
+          <p>安裝狀態偵測 hooks（狀態燈準不準靠這一步）。會修改 Claude 與 Codex 設定，先備份 <code>~/.claude/settings.json</code> 與 <code>~/.codex/config.toml</code>：</p>
+          <div class="code"><pre>bash -lc 'agent-deck hooks install &amp;&amp; agent-deck hooks status'
+bash -lc 'agent-deck codex-hooks install &amp;&amp; agent-deck codex-hooks status'</pre></div>
+          <p>建立網頁 token（權限 600，只有自己讀得到）：</p>
+          <div class="code"><pre>install -d -m 700 ~/.config/agent-deck
+install -m 600 /dev/null ~/.config/agent-deck/web-token
+head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' &gt; ~/.config/agent-deck/web-token</pre></div>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">04</span><span class="t">啟動腳本 deck-up</span><span class="where">伺服器 ~/.local/bin/deck-up</span></summary>
+        <div class="dbody">
+          <p>新版 agent-deck 的 TUI <b>拒絕在 tmux 裡執行</b>，所以把兩者拆開：網頁伺服器用 <code>--no-tui</code> 常駐在 tmux session「deck」，TUI 則直接在你的 SSH 分頁裡跑。<code>-e PATH=…</code> 把登入 shell 的 PATH 帶進 tmux，agent-deck 才找得到 claude／codex。</p>
+          <div class="code"><pre>#!/usr/bin/env bash
+# 確保 agent-deck 網頁伺服器常駐在 tmux session「deck」（headless，只綁 127.0.0.1:&lt;PORT&gt;），
+# 然後在目前終端機開 agent-deck TUI。TUI 不能在 tmux 裡跑，所以網頁和 TUI 分開。
+if ! tmux has-session -t deck 2&gt;/dev/null; then
+  tmux new-session -d -s deck -e "PATH=$PATH" \
+    "$HOME/.local/bin/agent-deck web --no-tui --push --listen 127.0.0.1:&lt;PORT&gt; --token-file $HOME/.config/agent-deck/web-token"
+  sleep 1
+fi
+tmux has-session -t deck 2&gt;/dev/null &amp;&amp; echo "agent-deck web: running (tmux session deck, 127.0.0.1:&lt;PORT&gt;)"
+[ -n "$TMUX" ] &amp;&amp; exit 0
+"$HOME/.local/bin/agent-deck"
+exec bash -l</pre></div>
+          <p class="small muted"><code>chmod 755 ~/.local/bin/deck-up</code>。離開 TUI 後會停在伺服器 shell，分頁不會被關掉，隧道也還在。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">05</span><span class="t">Windows Terminal 分頁</span><span class="where">筆電 settings.json</span></summary>
+        <div class="dbody">
+          <p>Windows Terminal 按 <kbd>Ctrl</kbd>+<kbd>,</kbd> → 左下「開啟 JSON 檔案」。先備份，再在 <code>profiles.list</code> 加入兩筆，GUID 用 PowerShell 的 <code>[guid]::NewGuid()</code> 產生。不用改 <code>defaultProfile</code>。</p>
+          <div class="code"><pre>{
+    "guid": "{&lt;新 GUID 1&gt;}",
+    "name": "&lt;ALIAS&gt; · deck",
+    "commandline": "ssh -t &lt;ALIAS&gt;-deck \"bash -lc ~/.local/bin/deck-up\"",
+    "bellStyle": ["window", "taskbar"],
+    "tabTitle": "deck",
+    "suppressApplicationTitle": true
+},
+{
+    "guid": "{&lt;新 GUID 2&gt;}",
+    "name": "&lt;ALIAS&gt; · shell",
+    "commandline": "ssh &lt;ALIAS&gt;",
+    "bellStyle": ["window", "taskbar"]
+}</pre></div>
+          <p class="small muted">Windows Terminal 不懂 SSH，它只是執行 <code>ssh &lt;別名&gt;</code>；連線資訊都來自 <code>~/.ssh/config</code>。以後 IP 換了只改那裡。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">06</span><span class="t">第一次開網頁</span><span class="where">筆電</span></summary>
+        <div class="dbody">
+          <ol>
+            <li>Windows Terminal → <b>+</b> 旁的 <b>⌄</b> → 選「&lt;ALIAS&gt; · deck」。應看到 agent-deck TUI（第一次可能詢問是否傳送匿名使用資料，自己決定）。</li>
+            <li>取得 token：在另一個分頁執行 <code>ssh &lt;ALIAS&gt; cat ~/.config/agent-deck/web-token</code>。不要把 token 存進會同步或分享的檔案。</li>
+            <li>瀏覽器開 <code>http://localhost:&lt;PORT&gt;/?token=&lt;token&gt;</code>，之後 cookie 會記住，直接開 <code>http://localhost:&lt;PORT&gt;</code> 即可。</li>
+            <li>右上角齒輪（Tweaks）→ 開啟 <b>Notifications</b>，agent 等你回應時瀏覽器會跳通知。</li>
+          </ol>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">07</span><span class="t">VS Code + GitLens</span><span class="where">筆電＋伺服器</span></summary>
+        <div class="dbody">
+          <p><b>使用者設定</b>（<code>%APPDATA%\Code\User\settings.json</code>，先備份）加入兩項：指定伺服器平台，連線時不再詢問；並讓 VS Code 不要自動轉送 agent-deck 的 port，避免和 deck 分頁搶。</p>
+          <div class="code"><pre>"remote.SSH.remotePlatform": { "&lt;ALIAS&gt;": "linux" },
+"remote.portsAttributes": {
+    "&lt;PORT&gt;": { "label": "agent-deck (use &lt;ALIAS&gt;-deck tunnel)", "onAutoForward": "ignore" }
+}</pre></div>
+          <p><b>只顯示想看的 repo</b>：VS Code 的 Git 預設只往下掃一層，放在子資料夾的 repo 不會出現，全部列出又太多。在伺服器建立 workspace 檔 <code>&lt;REPO_ROOT&gt;/&lt;ALIAS&gt;.code-workspace</code>，清單就是要顯示的 repo：</p>
+          <div class="code"><pre>{
+  // 要在 VS Code 顯示的 repo：加一行或刪一行即可（路徑相對於這個檔案）
+  "folders": [
+    { "path": "&lt;repo-a&gt;" },
+    { "path": "&lt;子資料夾&gt;/&lt;repo-b&gt;" }
+  ],
+  "settings": {}
+}</pre></div>
+          <p>開啟方式：</p>
+          <div class="code"><pre>code --file-uri "vscode-remote://ssh-remote+&lt;ALIAS&gt;&lt;REPO_ROOT&gt;/&lt;ALIAS&gt;.code-workspace"</pre></div>
+          <ul class="small">
+            <li>之後從 <b>File → Open Recent</b> 一鍵回來。</li>
+            <li>增減 repo：檔案總管右鍵 <b>Add Folder to Workspace…</b> / <b>Remove Folder from Workspace</b>，或直接改檔。</li>
+            <li>VS Code 一律用 <code>&lt;ALIAS&gt;</code>，<b>不要用 <code>&lt;ALIAS&gt;-deck</code></b>（會搶 port）。</li>
+            <li>GitLens 會在 Source Control 與左側 GitLens 面板顯示每個 repo 的分支、提交歷史、blame 與 worktree。</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ agent-deck 介面 ============ -->
+  <section class="panel" id="ui" role="tabpanel" aria-labelledby="t-ui" hidden>
+    <div class="stack">
+      <p class="muted">以 agent-deck v1.16 網頁版為準。點下面的區塊切換說明。</p>
+      <div class="chips" role="group" aria-label="介面區塊">
+        <button class="chip" data-ui="ui-status" aria-pressed="true">狀態燈</button>
+        <button class="chip" data-ui="ui-top" aria-pressed="false">頂部導覽列</button>
+        <button class="chip" data-ui="ui-side" aria-pressed="false">左側 Sessions</button>
+        <button class="chip" data-ui="ui-head" aria-pressed="false">Session 標頭</button>
+        <button class="chip" data-ui="ui-new" aria-pressed="false">New session 表單</button>
+        <button class="chip" data-ui="ui-rail" aria-pressed="false">右側資訊欄</button>
+        <button class="chip" data-ui="ui-tweaks" aria-pressed="false">Tweaks 與快捷鍵</button>
+      </div>
+
+      <div class="card stack" id="ui-status">
+        <h2>狀態燈</h2>
+        <div class="tw"><table>
+          <thead><tr><th>狀態</th><th>意思</th><th>你要做什麼</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill p-run">running</span></td><td>agent 正在工作</td><td>不用管</td></tr>
+            <tr><td><span class="pill p-wait">waiting</span></td><td>agent 停下來等你：要授權、要回答問題、或做完在等下一個指令</td><td>點進去回應；有開通知會跳推播</td></tr>
+            <tr><td><span class="pill p-idle">idle</span></td><td>閒置，沒在做事</td><td>可以給新任務，或 Stop 掉</td></tr>
+            <tr><td><span class="pill p-stop">stopped</span></td><td>已停止，tmux session 不存在</td><td>需要時按 Start 或 Restart</td></tr>
+            <tr><td><span class="pill p-err">error</span></td><td>啟動失敗或程序異常結束</td><td>看「疑難排解」；常見是找不到 claude（PATH）</td></tr>
+          </tbody>
+        </table></div>
+        <p class="small muted">狀態是靠步驟 03 裝的 hooks 回報的，沒裝 hooks 時會不準。</p>
+      </div>
+
+      <div class="card stack" id="ui-top" hidden>
+        <h2>頂部導覽列</h2>
+        <div class="tw"><table>
+          <thead><tr><th>項目</th><th>功能</th></tr></thead>
+          <tbody>
+            <tr><td>Jump（<kbd>Ctrl</kbd>+<kbd>K</kbd>）</td><td>指令面板：跳到某個 session、搜尋對話、執行指令</td></tr>
+            <tr><td>Command Center</td><td>總指揮台。「NEEDS YOU」列出正在等你的 agent；「THE FLEET」看每個群組在做什麼；底部輸入框可對 conductor（Maestro）下指令，需要先建立 conductor session</td></tr>
+            <tr><td>Fleet</td><td>總覽。上方統計卡：RUNNING / WAITING / ERROR / IDLE / 今日花費 / session 總數；下方可切換用 Status 或 Groups 分組顯示</td></tr>
+            <tr><td>Terminal</td><td>直接在網頁裡操作選中 session 的終端機（例如跟 Claude 對話）</td></tr>
+            <tr><td>MCPs</td><td>管理選中 session 掛載的 MCP server。網頁版目前只能檢視，掛載請用 TUI（按 <kbd>m</kbd>）</td></tr>
+            <tr><td>Skills</td><td>管理選中 session 的 skills。網頁版目前只能檢視，掛載請用 TUI（按 <kbd>s</kbd>）</td></tr>
+            <tr><td>Conductor</td><td>多 agent 協作（一個 agent 指揮其他 agent）的拓撲圖。目前只有 TUI 支援</td></tr>
+            <tr><td>Watchers</td><td>事件監看與路由。目前只有 TUI 支援</td></tr>
+            <tr><td>Costs</td><td>各 session 的花費統計</td></tr>
+            <tr><td>Search</td><td>依名稱、路徑、工具搜尋 session</td></tr>
+            <tr><td>Archived</td><td>封存的 session，可取消封存回到清單</td></tr>
+            <tr><td>ws · live</td><td>和伺服器的即時連線狀態。斷掉代表隧道或網頁伺服器有問題</td></tr>
+            <tr><td>default</td><td>目前的 profile（啟動時決定，網頁上不能切換）</td></tr>
+            <tr><td>右上三個圖示</td><td>通知紀錄（toast history）、開關右側資訊欄、Tweaks 設定</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card stack" id="ui-side" hidden>
+        <h2>左側 Sessions 欄</h2>
+        <div class="tw"><table>
+          <thead><tr><th>項目</th><th>功能</th></tr></thead>
+          <tbody>
+            <tr><td>SESSIONS N</td><td>session 總數</td></tr>
+            <tr><td>欄位圖示（漏斗）</td><td>「Show in row」選擇每列要顯示的資訊：工具標籤、花費、Git 分支、MCPs/skills、Docker/worktree、最後活動時間、目標/狀態提示</td></tr>
+            <tr><td>+</td><td>新增 session（同 New）</td></tr>
+            <tr><td>/ filter</td><td>依文字篩選 session（快捷鍵 <kbd>/</kbd>）</td></tr>
+            <tr><td>● ◐ ○ ■ ✕</td><td>依狀態篩選：running、waiting、idle、stopped、error</td></tr>
+            <tr><td>群組（例如使用者名稱）</td><td>session 依 group 分組，可收合</td></tr>
+            <tr><td>每列右側按鈕</td><td>展開後可 Stop、Restart、Edit（改名稱/設定）、Fork（複製一份目前的對話脈絡，開成新的 session，原本的不受影響；支援 Claude、Codex、OpenCode、Pi。必須已經對話過至少一輪，否則會出現「no active Claude session」）、Archive（封存）、Delete（刪除）</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card stack" id="ui-head" hidden>
+        <h2>Session 標頭（中間上方）</h2>
+        <div class="tw"><table>
+          <thead><tr><th>項目</th><th>功能</th></tr></thead>
+          <tbody>
+            <tr><td>AGENT default / 群組 / 名稱</td><td>目前選中的 session 位置：profile / group / 標題</td></tr>
+            <tr><td>狀態膠囊</td><td>running / waiting / idle / error…，見「狀態燈」</td></tr>
+            <tr><td>模型標籤</td><td>這個 session 使用的模型，例如 Claude Opus 5.5</td></tr>
+            <tr><td>Start / Stop</td><td>啟動或停止 session 的 tmux 程序</td></tr>
+            <tr><td>Restart</td><td>重開（會重新載入 MCP）。出現「tmux session is not available」時也按這個</td></tr>
+            <tr><td>+ New（<kbd>n</kbd>）</td><td>開新 session，見下一節</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card stack" id="ui-new" hidden>
+        <h2>New session 表單</h2>
+        <div class="tw"><table>
+          <thead><tr><th>欄位</th><th>說明</th></tr></thead>
+          <tbody>
+            <tr><td>GROUP</td><td>放在哪個群組，方便分類（例如依專案）</td></tr>
+            <tr><td>NAME</td><td>session 名稱，例如 <code>fix-login-bug</code></td></tr>
+            <tr><td>WORKING DIR</td><td>agent 的工作目錄，<b>伺服器上的絕對路徑</b>，例如 <code>&lt;REPO_ROOT&gt;/&lt;repo&gt;</code></td></tr>
+            <tr><td>TOOL</td><td>要開的工具：shell（純終端機）、claude（Claude Code）、ChatGPT（Codex CLI）、gemini、opencode、pi、copilot、crush、cursor、hermes、deepseek、omp。要伺服器上有安裝才會成功</td></tr>
+            <tr><td>MODEL ID</td><td>選模型；「Tool default」用工具自己的預設；也可填 Custom model ID</td></tr>
+            <tr><td>REASONING EFFORT</td><td>思考深度：Tool default / low / medium / high / xhigh / max</td></tr>
+            <tr><td>Create session</td><td>建立並啟動。建好後在 Terminal 分頁直接輸入任務</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card stack" id="ui-rail" hidden>
+        <h2>右側資訊欄（Right rail）</h2>
+        <div class="tw"><table>
+          <thead><tr><th>面板</th><th>內容</th></tr></thead>
+          <tbody>
+            <tr><td>Overview</td><td>kind、tool、group、path 與目前狀態</td></tr>
+            <tr><td>Usage &amp; activity</td><td>用量與花費、最近活動。花費是 hooks 在每輪對話後讀 Claude 的對話紀錄算出來的，shell session 永遠沒有；剛開、還沒完成一輪的 Claude 也會顯示「cost data not available」。可用 <code>agent-deck costs sync</code> 補匯入、<code>agent-deck costs summary</code> 查總額</td></tr>
+            <tr><td>MCPs / Skills</td><td>網頁版目前不提供（顯示「not exposed via web API」是設計如此，不是設定錯誤）。要看或掛載，到 deck 分頁的 TUI 選 session 按 <kbd>m</kbd>（MCP）或 <kbd>s</kbd>（Skills）</td></tr>
+            <tr><td>Children (conductor)</td><td>若是 conductor，列出它指揮的子 agent</td></tr>
+            <tr><td>Events (watcher)</td><td>watcher 事件</td></tr>
+          </tbody>
+        </table></div>
+        <p class="small muted">按 <kbd>]</kbd> 開關這一欄。</p>
+      </div>
+
+      <div class="card stack" id="ui-tweaks" hidden>
+        <h2>Tweaks、狀態列與快捷鍵</h2>
+        <div class="tw"><table>
+          <thead><tr><th>項目</th><th>功能</th></tr></thead>
+          <tbody>
+            <tr><td>ACCENT</td><td>介面強調色</td></tr>
+            <tr><td>DENSITY</td><td>compact / balanced / comfortable，列表密度</td></tr>
+            <tr><td>RIGHT RAIL</td><td>是否顯示右側資訊欄</td></tr>
+            <tr><td>NOTIFICATIONS</td><td>瀏覽器推播。顯示「blocked in browser settings」時，到瀏覽器網址列左邊的網站設定允許通知。必須用 <code>http://localhost</code> 開才有效</td></tr>
+            <tr><td>底部狀態列</td><td>連線狀態、profile、session 數、各狀態數量、伺服器 CPU 與記憶體</td></tr>
+            <tr><td>快捷鍵</td><td><kbd>Ctrl</kbd>+<kbd>K</kbd> 指令面板 · <kbd>/</kbd> 篩選 · <kbd>n</kbd> 新 session · <kbd>?</kbd> Tweaks · <kbd>]</kbd> 右側欄</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note info">網頁版做不到的（掛 MCP/skill、Conductor、Watchers）用 TUI：在 deck 分頁裡操作，選 session 按 <kbd>Enter</kbd> 進入，依畫面提示返回列表。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ herdr ============ -->
+  <section class="panel" id="herdr" role="tabpanel" aria-labelledby="t-herdr" hidden>
+    <div class="stack">
+      <p class="muted"><a href="https://github.com/herdrdev/herdr" target="_blank" rel="noopener">herdr</a>（Apache-2.0）是給 AI agent 用的終端機多工器，可以想成「會看懂 agent 狀態的 tmux」。以 herdr 0.9.3 為準。點下面切換說明。</p>
+      <div class="chips" role="group" aria-label="herdr 主題">
+        <button class="chip" data-ui="h-setup" aria-pressed="true">安裝步驟</button>
+        <button class="chip" data-ui="h-concept" aria-pressed="false">基本觀念</button>
+        <button class="chip" data-ui="h-keys" aria-pressed="false">滑鼠與快捷鍵</button>
+        <button class="chip" data-ui="h-talk" aria-pressed="false">agent 互相溝通</button>
+        <button class="chip" data-ui="h-gotcha" aria-pressed="false">注意事項</button>
+      </div>
+
+      <div id="h-setup" class="stack">
+        <div class="note info">兩種用法：<b>模式 A</b>（建議）在 Windows Terminal 裡 SSH 進伺服器再執行 herdr，筆電不用裝任何東西；<b>模式 B</b> 在 Windows 裝原生 herdr，多了 Windows 系統通知，但執行檔沒有簽章，公司電腦可能被端點防護擋下（實測出現「Access is denied」）。以下是模式 A。也可以到「一鍵設定 Prompt」選 herdr，交給 agent 做完。</div>
+        <details open>
+          <summary><span class="step">01</span><span class="t">SSH 別名</span><span class="where">筆電</span></summary>
+          <div class="dbody"><p>沿用 agent-deck 設定步驟 01 的 <code>&lt;ALIAS&gt;</code> 即可（herdr 不需要隧道，不要用 <code>&lt;ALIAS&gt;-deck</code>）。沒有的話照那一步建立。驗證 <code>ssh &lt;ALIAS&gt; echo ok</code>。</p></div>
+        </details>
+        <details>
+          <summary><span class="step">02</span><span class="t">在伺服器安裝 herdr</span><span class="where">伺服器</span></summary>
+          <div class="dbody">
+            <p>安裝腳本會下載官方預編譯執行檔、驗證 SHA-256，放到 <code>~/.local/bin</code>，不需要 sudo。一樣先看過再跑：</p>
+            <div class="code"><pre>curl -fsSL https://herdr.dev/install.sh -o /tmp/herdr-install.sh
+less /tmp/herdr-install.sh      <span class="c"># 看過內容</span>
+sh /tmp/herdr-install.sh
+bash -lc 'herdr --version'      <span class="c"># 登入 shell 要找得到</span></pre></div>
+            <p class="small muted">登入 shell 找不到的話，照 agent-deck 設定步驟 02 把 <code>$HOME/.local/bin</code> 加進 <code>~/.profile</code>。不要在非互動的 ssh 指令裡直接執行 <code>herdr</code>，它會開互動畫面。</p>
+          </div>
+        </details>
+        <details>
+          <summary><span class="step">03</span><span class="t">安裝 Claude／Codex integration</span><span class="where">伺服器</span></summary>
+          <div class="dbody">
+            <p>讓 herdr 準確判斷狀態，並在 herdr 重啟或伺服器重開機後自動接回對話（<code>claude --resume</code>、<code>codex resume</code>）。先備份 <code>~/.claude/settings.json</code>、<code>~/.codex/config.toml</code>、<code>~/.codex/hooks.json</code>（若有）：</p>
+            <div class="code"><pre>bash -lc 'herdr integration install claude'
+bash -lc 'herdr integration install codex'
+bash -lc 'herdr integration status'      <span class="c"># claude、codex 應顯示 current</span></pre></div>
+            <p>會新增 <code>~/.claude/hooks/herdr-agent-state.sh</code> 並在 Claude 設定加 hook；Codex 則新增 <code>~/.codex/herdr-agent-state.sh</code>、<code>hooks.json</code>，並在 <code>config.toml</code> 加上 <code>[features] hooks = true</code>。實測和 agent-deck 的 hooks、statusLine 可以並存，裝完比對備份確認原本設定都在。</p>
+          </div>
+        </details>
+        <details>
+          <summary><span class="step">04</span><span class="t">安裝 herdr skill（agent 協作用）</span><span class="where">伺服器</span></summary>
+          <div class="dbody">
+            <p>裝了之後，在 herdr 裡跑的 Claude 會用 herdr CLI 開旁邊的 pane、啟動 Codex、丟任務、等它做完並讀結果。用 herdr 自帶的版本，不需要 Node：</p>
+            <div class="code"><pre>bash -lc 'mkdir -p ~/.claude/skills/herdr &amp;&amp; herdr --skill &gt; ~/.claude/skills/herdr/SKILL.md'</pre></div>
+          </div>
+        </details>
+        <details>
+          <summary><span class="step">05</span><span class="t">Windows Terminal 分頁</span><span class="where">筆電 settings.json</span></summary>
+          <div class="dbody">
+            <p>備份 <code>settings.json</code>，在 <code>profiles.list</code> 加一筆（GUID 用 <code>[guid]::NewGuid()</code>）：</p>
+            <div class="code"><pre>{
+    "guid": "{&lt;新 GUID&gt;}",
+    "name": "&lt;ALIAS&gt; · herdr",
+    "commandline": "ssh -t &lt;ALIAS&gt; \"bash -lc herdr\"",
+    "bellStyle": ["window", "taskbar"],
+    "tabTitle": "herdr",
+    "suppressApplicationTitle": true
+}</pre></div>
+          </div>
+        </details>
+        <details>
+          <summary><span class="step">06</span><span class="t">第一次使用與驗證</span><span class="where">筆電</span></summary>
+          <div class="dbody">
+            <ol>
+              <li>開「&lt;ALIAS&gt; · herdr」，應看到左邊側欄（spaces / agents）、右邊 pane。</li>
+              <li>在 pane 執行 <code>cd &lt;測試 repo&gt; &amp;&amp; claude</code>，側欄 agents 應出現 claude，狀態會跟著工作變化。</li>
+              <li>另一個 pane 執行 <code>codex --no-daemon</code>。<b>第一次會跳出 Hooks 審核對話框</b>（「1 hook needs review」），那是步驟 03 裝的 herdr hook，按 <kbd>t</kbd> 信任。</li>
+              <li>關掉分頁再重開，應回到同一個畫面，agent 還在。</li>
+            </ol>
+            <p class="small muted">從筆電確認伺服器狀態：<code>ssh &lt;ALIAS&gt; '~/.local/bin/herdr agent list'</code>。</p>
+          </div>
+        </details>
+      </div>
+
+      <div id="h-concept" class="card stack" hidden>
+        <h2>基本觀念</h2>
+        <div class="tw"><table>
+          <thead><tr><th>名詞</th><th>意思</th></tr></thead>
+          <tbody>
+            <tr><td>herdr 伺服器</td><td>在伺服器背景常駐，所有 pane 和 agent 都在它裡面。關掉 Windows Terminal、筆電關機都不會停</td></tr>
+            <tr><td>Workspace 工作區</td><td>一個專案一個工作區，agent 狀態才不會混在一起。側欄上方 spaces 列出，下方顯示目前 git 分支</td></tr>
+            <tr><td>Tab 分頁 / Pane</td><td>工作區裡的分頁；分頁可以切成多個 pane，每個 pane 都是真的終端機</td></tr>
+            <tr><td>側欄 agents</td><td>自動偵測 pane 裡的 claude、codex 等，依工作區分組顯示狀態</td></tr>
+            <tr><td>Agent 名字</td><td>可替 agent 取名（例如 coder、review），之後用名字互相傳訊息。名字跟著 agent 走，agent 結束就清掉</td></tr>
+          </tbody>
+        </table></div>
+        <div class="tw"><table>
+          <thead><tr><th>狀態</th><th>意思</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill p-run">working</span></td><td>正在工作</td></tr>
+            <tr><td><span class="pill p-wait">blocked</span></td><td>卡在授權或提問畫面，在等你</td></tr>
+            <tr><td><span class="pill p-run">done</span></td><td>做完了、你還沒看過</td></tr>
+            <tr><td><span class="pill p-idle">idle</span></td><td>閒置；done 被看過後也變成 idle。herdr 不認得的提問畫面也會退回 idle（已知限制）</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div id="h-keys" class="card stack" hidden>
+        <h2>滑鼠與快捷鍵</h2>
+        <p><b>滑鼠</b>：點 pane、分頁、工作區、側欄 agent 來切換；拖曳邊框調整大小；右鍵叫出選單（分割、開分頁）；拖曳反白自動複製，雙擊選字；貼上用 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>。</p>
+        <p><b>快捷鍵</b>：先按 <kbd>Ctrl</kbd>+<kbd>B</kbd> 放開，再按下表的鍵。</p>
+        <div class="tw"><table>
+          <thead><tr><th>按鍵</th><th>功能</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>?</kbd></td><td>列出所有快捷鍵</td></tr>
+            <tr><td><kbd>c</kbd> / <kbd>n</kbd> / <kbd>p</kbd> / <kbd>1</kbd>–<kbd>9</kbd></td><td>新分頁 / 下一個 / 上一個 / 跳到第 N 個分頁</td></tr>
+            <tr><td><kbd>v</kbd> / <kbd>-</kbd></td><td>往右分割 / 往下分割</td></tr>
+            <tr><td><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></td><td>焦點移到左 / 下 / 上 / 右的 pane</td></tr>
+            <tr><td><kbd>z</kbd> / <kbd>x</kbd> / <kbd>r</kbd></td><td>放大目前 pane / 關閉 pane / 調整大小模式</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>N</kbd> / <kbd>w</kbd></td><td>新工作區 / 切換工作區</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>T</kbd> / <kbd>Shift</kbd>+<kbd>W</kbd></td><td>改分頁名稱 / 改工作區名稱</td></tr>
+            <tr><td><kbd>Shift</kbd>+<kbd>X</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd></td><td>關閉分頁 / 關閉工作區（會結束裡面的程式）</td></tr>
+            <tr><td><kbd>g</kbd></td><td>跳轉清單：列出所有 agent；<kbd>b</kbd>/<kbd>w</kbd>/<kbd>i</kbd>/<kbd>d</kbd> 篩選 blocked/working/idle/done，Enter 跳過去</td></tr>
+            <tr><td><kbd>b</kbd></td><td>收合或展開側欄</td></tr>
+            <tr><td><kbd>[</kbd></td><td>複製模式（<kbd>v</kbd> 選取、<kbd>y</kbd> 複製、<kbd>/</kbd> 搜尋、<kbd>q</kbd> 離開）</td></tr>
+            <tr><td><kbd>q</kbd></td><td>離開畫面，所有 agent 繼續跑；再執行 herdr 就接回</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div id="h-talk" class="card stack" hidden>
+        <h2>agent 互相溝通</h2>
+        <p>原理：每個 pane 裡的 agent 都能呼叫 <code>herdr</code> CLI，用「名字」指定對方，送訊息、等它做完、讀它的畫面。實測 Claude 和 Codex 可以雙向互傳。</p>
+        <h3>1. 開兩個有名字的 agent</h3>
+        <div class="code"><pre>herdr workspace create --cwd &lt;repo&gt; --label agent-demo --focus     <span class="c"># 回傳 root_pane，例如 w3:p1</span>
+herdr pane split w3:p1 --direction right --cwd &lt;repo&gt; --no-focus   <span class="c"># 回傳新 pane，例如 w3:p2</span>
+herdr agent start alice --kind claude --pane w3:p1
+herdr agent start bob   --kind codex  --pane w3:p2 -- --no-daemon</pre></div>
+        <p class="small muted">手動開也可以：<kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>Shift</kbd>+<kbd>N</kbd> 開工作區、<kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>v</kbd> 分割，各自輸入 <code>claude</code>、<code>codex --no-daemon</code>，再用 <code>herdr agent rename &lt;pane ID&gt; &lt;名字&gt;</code> 取名。名字限小寫英文開頭、可含數字 <code>-</code> <code>_</code>，最長 32 字。</p>
+        <h3>2. 溝通用的指令</h3>
+        <div class="tw"><table>
+          <thead><tr><th>指令</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td><code>herdr agent list</code></td><td>列出所有 agent 的名字、種類、狀態、pane ID</td></tr>
+            <tr><td><code>herdr agent prompt &lt;名字&gt; "訊息" --wait</code></td><td>送訊息並等對方做完（idle / done / blocked）</td></tr>
+            <tr><td><code>herdr agent read &lt;名字&gt; --source recent-unwrapped --lines 40</code></td><td>讀對方畫面上的回覆</td></tr>
+            <tr><td><code>herdr agent wait &lt;名字&gt; --until blocked</code></td><td>等對方進入特定狀態</td></tr>
+            <tr><td><code>herdr agent send-keys &lt;名字&gt; esc</code></td><td>對對方按鍵（例如關掉對話框）</td></tr>
+            <tr><td><code>herdr agent rename &lt;名字或 pane&gt; &lt;新名字&gt;</code></td><td>改名或 <code>--clear</code> 清掉</td></tr>
+          </tbody>
+        </table></div>
+        <h3>3. 叫 agent 去做</h3>
+        <p>在 alice（Claude）的輸入框打，<b>一定要提到「herdr」</b>：</p>
+        <div class="code"><pre>用 herdr 跟名叫 bob 的 agent 說 hi，請它回一句話，然後告訴我它回了什麼</pre></div>
+        <div class="note">沒寫「herdr」的話，Claude 會改用 Claude Code 自己的跨 session 訊息功能，去找你帳號下其他 Claude session（例如 Remote Control session），結果回報「找不到名叫 review 的 session」。herdr skill 刻意設定成「使用者明確提到 Herdr 才用」。</div>
+        <p>常見組合：「用 herdr 在旁邊開一個 Codex，叫它審查目前的 git diff，等它做完後把重點告訴我」（Claude 寫、Codex 審）。</p>
+      </div>
+
+      <div id="h-gotcha" class="card stack" hidden>
+        <h2>注意事項（實測踩過的）</h2>
+        <ul>
+          <li><b>不要在 herdr 的 pane 裡再開 tmux</b>，agent 狀態偵測會失效。</li>
+          <li><b>Codex 用 <code>codex --no-daemon</code> 啟動</b>，共用 daemon 可能把狀態回報到錯的 pane。</li>
+          <li><b>Codex 第一次啟動跳 Hooks 審核</b>：按 <kbd>t</kbd> 信任 herdr 的 hook；只按 <kbd>esc</kbd> 下次還會跳。</li>
+          <li><b>Codex 的沙盒會擋 herdr CLI</b>：每條 <code>herdr agent …</code> 都會問要不要在沙盒外執行，狀態顯示 blocked。選 <kbd>y</kbd> 只允許這次；常用的話選 <kbd>p</kbd>（以後 <code>herdr agent</code> 開頭的指令不再問），代價是 Codex 之後可以不經詢問指揮其他 agent。</li>
+          <li><b>讀 blocked 的 agent</b> 要用 <code>--source visible</code>，讀很多行會失敗。</li>
+          <li><b>Claude 輸入框的灰字是建議輸入</b>，不是有人打的，按 Enter 不會送出。</li>
+          <li><b><code>herdr server stop</code>、<code>herdr update</code> 可能結束所有 pane 裡的程式</b>，先讓 agent 停在可以中斷的地方。</li>
+          <li><b>伺服器重開機</b>：herdr 不會自動啟動；開「&lt;ALIAS&gt; · herdr」就會啟動並還原工作區、接回 Claude／Codex 對話，但重開機前正在跑的指令會中斷。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ herdr vs agent-deck ============ -->
+  <section class="panel" id="compare" role="tabpanel" aria-labelledby="t-compare" hidden>
+    <div class="stack">
+      <div class="card stack">
+        <h2>一句話選擇</h2>
+        <ul>
+          <li><b>想在瀏覽器一眼看完所有 agent、收推播、看花費</b> → agent-deck。</li>
+          <li><b>習慣在終端機工作、想讓 agent 互相分工（Claude 寫、Codex 審）</b> → herdr。</li>
+          <li>兩者可以同時裝在同一台伺服器，hooks 互不衝突；但同一個 agent 只會被開啟它的那套工具追蹤。</li>
+        </ul>
+      </div>
+      <div class="card tw">
+        <table class="cmp">
+          <thead><tr><th>項目</th><th>agent-deck</th><th>herdr</th></tr></thead>
+          <tbody>
+            <tr><td>定位</td><td>agent session 管理器，建在 tmux 之上</td><td>agent 專用的終端機多工器（取代 tmux）</td></tr>
+            <tr><td>操作介面</td><td>瀏覽器網頁 + 終端機 TUI</td><td>只有終端機畫面（支援滑鼠），另有 CLI / API</td></tr>
+            <tr><td>從筆電怎麼看</td><td>SSH 隧道 + 瀏覽器 <code>localhost:&lt;PORT&gt;</code>，需要 token</td><td>Windows Terminal SSH 進去執行 herdr，不用開 port</td></tr>
+            <tr><td>agent 跑在哪</td><td>每個 agent 一個 tmux session（<code>agentdeck_*</code>）</td><td>herdr 伺服器裡的 pane</td></tr>
+            <tr><td>斷線 / 筆電關機</td><td>agent 繼續跑</td><td>agent 繼續跑</td></tr>
+            <tr><td>伺服器重開機</td><td>agent 停止，要在網頁重開</td><td>重開 herdr 會還原版面並自動接回 Claude／Codex 對話</td></tr>
+            <tr><td>狀態</td><td>running / waiting / idle / stopped / error</td><td>working / blocked / done / idle</td></tr>
+            <tr><td>通知</td><td>瀏覽器推播（需 localhost + 允許通知）</td><td>模式 A 靠終端機鈴聲；Windows 系統通知要模式 B（原生版）</td></tr>
+            <tr><td>agent 互相溝通</td><td>Conductor（一個 agent 指揮其他 agent），目前只有 TUI</td><td><code>herdr agent prompt / read / wait</code>，任一 agent 都能指揮其他 agent；附 skill</td></tr>
+            <tr><td>花費統計</td><td>有（Costs 分頁、每日預算）</td><td>沒有</td></tr>
+            <tr><td>Fork 對話</td><td>有（Claude、Codex、OpenCode、Pi）</td><td>沒有內建，可用 worktree 指令另開</td></tr>
+            <tr><td>MCP / Skills 管理</td><td>TUI 有（<kbd>m</kbd> / <kbd>s</kbd>），網頁沒有</td><td>沒有</td></tr>
+            <tr><td>版面</td><td>一個 agent 一個畫面，在清單間切換</td><td>自由分割 pane，同時看好幾個 agent</td></tr>
+            <tr><td>支援工具</td><td>claude、codex、gemini、opencode、cursor、copilot…</td><td>claude、codex、gemini、opencode、cursor、copilot、pi…（20 多種）</td></tr>
+            <tr><td>安裝</td><td>單一執行檔 + hooks + 啟動腳本 + token + 隧道設定</td><td>單一執行檔 + integration，步驟較少</td></tr>
+            <tr><td>Windows 原生</td><td>不需要</td><td>選用（beta，執行檔未簽章，可能被公司防護擋下）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="roles">
+        <div class="card stack">
+          <h3>agent-deck 優點</h3>
+          <ul class="small"><li>瀏覽器介面，不熟終端機也好上手</li><li>手機、平板也能看（有隧道即可）</li><li>花費、用量、Command Center 總覽</li><li>Fork、MCP、Skills 管理</li></ul>
+          <h3>agent-deck 缺點</h3>
+          <ul class="small"><li>設定步驟多：token、隧道、port、deck-up</li><li>TUI 不能放在 tmux 裡，要特別處理</li><li>網頁版部分功能（MCP、Conductor）還沒做</li></ul>
+        </div>
+        <div class="card stack">
+          <h3>herdr 優點</h3>
+          <ul class="small"><li>安裝簡單，不用開 port、不用 token</li><li>同一畫面分割多個 agent，滑鼠就能操作</li><li>agent 互相溝通、分工最直接</li><li>重開機後自動接回對話</li></ul>
+          <h3>herdr 缺點</h3>
+          <ul class="small"><li>只有終端機介面，沒有網頁</li><li>沒有花費統計</li><li>模式 A 沒有系統通知</li><li>Codex 每條 herdr 指令都要批准（可設定不再問）</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 日常使用 ============ -->
+  <section class="panel" id="daily" role="tabpanel" aria-labelledby="t-daily" hidden>
+    <div class="stack">
+      <div class="card stack">
+        <h2>用 agent-deck 的一天</h2>
+        <ol>
+          <li>Windows Terminal 開「&lt;ALIAS&gt; · deck」，<b>整天開著</b>（它負責隧道）。</li>
+          <li>瀏覽器開 <code>http://localhost:&lt;PORT&gt;</code>，看所有 agent 狀態。</li>
+          <li>要開新 agent：右上 <b>+ New</b> → 填名稱、工作目錄、工具 → Create session。</li>
+          <li>要看 code / git：VS Code → File → Open Recent → 你的 workspace。</li>
+          <li>要跑其他指令：開「&lt;ALIAS&gt; · shell」，開幾個都可以。</li>
+        </ol>
+      </div>
+      <div class="card stack">
+        <h2>什麼會停、什麼不會</h2>
+        <div class="tw"><table>
+          <thead><tr><th>情況</th><th>agent 與網頁伺服器</th><th>要做什麼</th></tr></thead>
+          <tbody>
+            <tr><td>關掉 deck 分頁 / 筆電關機</td><td>繼續跑</td><td>重開 deck 分頁，網頁重新整理</td></tr>
+            <tr><td>網路斷線</td><td>繼續跑</td><td>同上</td></tr>
+            <tr><td>伺服器重開機</td><td>全部停止</td><td>開 deck 分頁，deck-up 會自動重啟網頁伺服器；agent 要在網頁重新開</td></tr>
+          </tbody>
+        </table></div>
+        <p class="small muted">隨時可用 <code>ssh &lt;ALIAS&gt; "tmux ls"</code> 確認，有 <code>deck</code> 就是網頁伺服器還活著。</p>
+      </div>
+      <div class="card stack">
+        <h2>用 herdr 的一天</h2>
+        <ol>
+          <li>開「&lt;ALIAS&gt; · herdr」。</li>
+          <li>每個 repo 一個工作區（<kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>Shift</kbd>+<kbd>N</kbd>），在 pane 裡跑 <code>claude</code> 或 <code>codex --no-daemon</code>。</li>
+          <li>看側欄狀態；<kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>g</kbd> 再按 <kbd>b</kbd> 找出所有 blocked 的 agent，Enter 跳過去處理。</li>
+          <li>下班直接關分頁或 <kbd>Ctrl</kbd>+<kbd>B</kbd> <kbd>q</kbd>，agent 繼續跑；明天再開就接回。</li>
+        </ol>
+      </div>
+      <div class="card stack">
+        <h2>只要網頁、不要 TUI</h2>
+        <p>網頁伺服器已在跑時，可以只開隧道：</p>
+        <div class="code"><pre>ssh -N &lt;ALIAS&gt;-deck</pre></div>
+        <p class="small muted">第一次啟動或伺服器重開機後，還是要開一次 deck 分頁讓 deck-up 把網頁伺服器帶起來。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 更新與移除 ============ -->
+  <section class="panel" id="maint" role="tabpanel" aria-labelledby="t-maint" hidden>
+    <div class="stack">
+      <details open>
+        <summary><span class="step">UP</span><span class="t">更新 agent-deck</span><span class="where">伺服器</span></summary>
+        <div class="dbody">
+          <div class="code"><pre>bash -lc 'agent-deck update --check'   <span class="c"># 只檢查有沒有新版</span>
+bash -lc 'agent-deck update'           <span class="c"># 下載並安裝最新版</span>
+bash -lc 'agent-deck update --version 1.16.26'   <span class="c"># 指定版本（也可降版）</span></pre></div>
+          <p>更新後，重啟網頁伺服器讓新版生效。<b>只會重啟網頁，agent 不受影響</b>：</p>
+          <div class="code"><pre>tmux kill-session -t deck
+<span class="c"># 然後在 Windows Terminal 重開「&lt;ALIAS&gt; · deck」，deck-up 會用新版啟動</span></pre></div>
+          <p>確認 hooks 還在（有時新版需要重新安裝）：</p>
+          <div class="code"><pre>bash -lc 'agent-deck hooks status; agent-deck codex-hooks status'
+bash -lc 'agent-deck hooks install; agent-deck codex-hooks install'   <span class="c"># 若顯示需要升級</span></pre></div>
+          <p class="small muted">想要每天自動更新：<code>agent-deck update --install-timer</code>（systemd user timer），用 <code>--uninstall-timer</code> 移除。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">RM</span><span class="t">移除 agent-deck（伺服器）</span><span class="where">伺服器</span></summary>
+        <div class="dbody">
+          <ol>
+            <li>停掉網頁伺服器，並在網頁上先 Stop / Delete 不要的 agent：<code>tmux kill-session -t deck</code></li>
+            <li>移除 hooks：
+              <div class="code"><pre>bash -lc 'agent-deck hooks uninstall; agent-deck codex-hooks uninstall'</pre></div></li>
+            <li>先預覽，再移除程式：
+              <div class="code"><pre>agent-deck uninstall --dry-run       <span class="c"># 列出會刪什麼</span>
+agent-deck uninstall --keep-data     <span class="c"># 只刪程式，保留 session 資料</span>
+agent-deck uninstall                 <span class="c"># 連設定、資料、快取、token 一起刪</span></pre></div></li>
+            <li>刪除啟動腳本：<code>rm ~/.local/bin/deck-up</code></li>
+            <li>從 <code>~/.tmux.conf</code>、<code>~/.profile</code> 刪掉 <code># &gt;&gt;&gt; agent-workflow &gt;&gt;&gt;</code> 標記區塊，或用 <code>*.bak-日期</code> 備份還原。</li>
+          </ol>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">RM</span><span class="t">移除筆電端設定</span><span class="where">筆電</span></summary>
+        <div class="dbody">
+          <ul>
+            <li><code>~/.ssh/config</code>：刪掉 agent-workflow 標記區塊（兩個別名）。</li>
+            <li>Windows Terminal：設定 → 刪除「&lt;ALIAS&gt; · deck」「&lt;ALIAS&gt; · shell」兩個設定檔，或還原 <code>settings.json.bak-日期</code>。</li>
+            <li>VS Code：從使用者設定移除 <code>remote.SSH.remotePlatform</code> 與 <code>remote.portsAttributes</code> 裡的這兩項；需要的話刪掉伺服器上的 <code>.code-workspace</code>。</li>
+            <li>瀏覽器：清除 <code>localhost:&lt;PORT&gt;</code> 的 cookie 與通知權限。</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">UP</span><span class="t">更新 herdr</span><span class="where">伺服器</span></summary>
+        <div class="dbody">
+          <p>先讓 agent 停在可以中斷的地方：少數版本升級需要重啟 herdr 伺服器，會結束 pane 裡的程式。</p>
+          <div class="code"><pre>bash -lc 'herdr status'      <span class="c"># 看 client / server 版本</span>
+bash -lc 'herdr update'      <span class="c"># 下載並安裝最新版（stable 頻道）</span>
+bash -lc 'herdr integration status'   <span class="c"># 確認 integration 仍是 current</span></pre></div>
+          <p class="small muted">有裝 Windows 原生版的話，兩邊要各自更新。</p>
+        </div>
+      </details>
+
+      <details>
+        <summary><span class="step">RM</span><span class="t">移除 herdr</span><span class="where">兩端</span></summary>
+        <div class="dbody">
+          <ol>
+            <li>確認沒有要保留的 agent 後停止伺服器（會結束所有 herdr pane）：<code>herdr server stop</code></li>
+            <li>移除 integration：
+              <div class="code"><pre>bash -lc 'herdr integration uninstall claude; herdr integration uninstall codex'</pre></div>
+              Codex 的 <code>config.toml</code> 不會自動還原，從備份還原或刪掉 <code>[features] hooks = true</code>。</li>
+            <li>刪除執行檔與 skill：<code>rm "$(bash -lc 'command -v herdr')" ; rm -r ~/.claude/skills/herdr</code></li>
+            <li>需要的話刪掉設定與工作階段狀態：<code>rm -r ~/.config/herdr</code></li>
+            <li>筆電：刪除 Windows Terminal 的「&lt;ALIAS&gt; · herdr」設定檔。有裝原生版的話刪除 <code>%USERPROFILE%\.herdr</code>、<code>%APPDATA%\herdr</code>，並移除 PATH 裡的 herdr 路徑。</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ 疑難排解 ============ -->
+  <section class="panel" id="trouble" role="tabpanel" aria-labelledby="t-trouble" hidden>
+    <div class="stack">
+      <details open>
+        <summary><span class="t">deck 分頁一開就閃退</span></summary>
+        <div class="dbody">
+          <p>多半是 agent-deck TUI 被包在 tmux 裡執行（新版會拒絕：「The agent-deck TUI is designed to run OUTSIDE of tmux」）。用設定步驟 04 的 deck-up：網頁伺服器 <code>--no-tui</code> 放 tmux，TUI 在外面跑。</p>
+          <p class="small muted">查原因：<code>ssh &lt;ALIAS&gt; "tmux capture-pane -p -t deck"</code>。</p>
+        </div>
+      </details>
+      <details>
+        <summary><span class="t">瀏覽器顯示 ERR_CONNECTION_REFUSED</span></summary>
+        <div class="dbody"><p>筆電沒有隧道。確認「&lt;ALIAS&gt; · deck」分頁有開著（不是 shell 分頁）。伺服器端可用 <code>ssh &lt;ALIAS&gt; "curl -s -o /dev/null -w %{http_code} http://127.0.0.1:&lt;PORT&gt;/"</code> 確認網頁伺服器有回 200。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">開 claude 顯示 error / tmux session is not available</span></summary>
+        <div class="dbody">
+          <p>agent-deck 的 PATH 裡找不到 <code>claude</code>。查 log：</p>
+          <div class="code"><pre>tail ~/.local/share/agent-deck/logs/session-id-lifecycle.jsonl   <span class="c"># 找 "tool not found on PATH"</span></pre></div>
+          <p>修正：照步驟 02 把 claude 的目錄加進 <code>~/.profile</code>，確認 deck-up 有 <code>-e "PATH=$PATH"</code>，然後 <code>tmux kill-session -t deck</code> 再重開 deck 分頁，最後在網頁按 Restart session。</p>
+          <div class="note bad">不要用非登入的 ssh 指令直接啟動網頁伺服器（例如 <code>ssh host 'tmux new -d …'</code>），那樣 PATH 不會讀 <code>~/.profile</code>。一律透過 <code>bash -lc deck-up</code>。</div>
+        </div>
+      </details>
+      <details>
+        <summary><span class="t">bind: Address already in use</span></summary>
+        <div class="dbody"><p>同時開了兩個帶隧道的連線（兩個 deck 分頁，或 VS Code 用了 <code>-deck</code> 別名）。關掉多的那個；VS Code 一律用不帶 -deck 的別名。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">網頁回 401 / 要求登入</span></summary>
+        <div class="dbody"><p>cookie 過期或換了瀏覽器。重新用 <code>?token=…</code> 開一次。token 外洩的話重新產生（步驟 03 最後三行），再 <code>tmux kill-session -t deck</code> 並重開 deck 分頁。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">沒有推播通知</span></summary>
+        <div class="dbody">
+          <p>出現「Notifications are blocked for this site」代表瀏覽器擋了這個網站的通知（多半是之前跳詢問時按了封鎖，或瀏覽器預設不讓網站詢問）。依序檢查：</p>
+          <ol>
+            <li>點網址列最左邊的圖示 →「網站權限／網站設定」→ <b>通知</b> 改成「允許」，重新整理頁面。</li>
+            <li>仍不行：Edge 到 <code>edge://settings/content/notifications</code>、Chrome 到 <code>chrome://settings/content/notifications</code>，確認沒有把 <code>localhost:&lt;PORT&gt;</code> 放在「封鎖」，且沒有關閉「網站可以要求傳送通知」。</li>
+            <li>回到 agent-deck → Tweaks → 打開 NOTIFICATIONS。</li>
+            <li>Windows「設定 → 系統 → 通知」要允許瀏覽器；「專注」或「勿擾」開著時也不會跳。</li>
+          </ol>
+          <p class="small muted">必須用 <code>http://localhost:&lt;PORT&gt;</code> 開，用 IP 開的話瀏覽器根本不允許推播。</p>
+        </div>
+      </details>
+      <details>
+        <summary><span class="t">VS Code 只看到部分 repo</span></summary>
+        <div class="dbody"><p>Git 預設只掃 workspace 根目錄下一層。用 <code>.code-workspace</code> 把要看的 repo（含子資料夾裡的）各自列成一個 folder，見步驟 07。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">herdr：叫 Claude 傳訊息給另一個 agent，卻說找不到 session</span></summary>
+        <div class="dbody"><p>prompt 裡沒有提到「herdr」，Claude 改用自己的跨 session 訊息功能去找你帳號下的其他 Claude session。改成「用 herdr 跟名叫 xxx 的 agent 說…」，或直接寫出 <code>herdr agent prompt xxx "…" --wait</code>。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">herdr：Codex 一直停在 blocked</span></summary>
+        <div class="dbody"><p>兩種常見原因：(1) 第一次啟動的 Hooks 審核對話框，按 <kbd>t</kbd> 信任；(2) Codex 沙盒擋 herdr CLI，在詢問畫面選 <kbd>y</kbd>（這次）或 <kbd>p</kbd>（以後不問）。查看畫面：<code>herdr agent read &lt;名字&gt; --source visible</code>。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">herdr：Windows 原生版安裝出現 Access is denied</span></summary>
+        <div class="dbody"><p>Windows 拒絕執行未簽章的 <code>herdr.exe</code>，多半是公司端點防護、AppLocker 或 SmartScreen。這是安全政策，不要繞過；改用模式 A，或請 IT 加入允許清單。殘留的 <code>%USERPROFILE%\.herdr</code> 可以自行刪除。</p></div>
+      </details>
+      <details>
+        <summary><span class="t">在 PowerShell 下的 ssh 指令引號被吃掉</span></summary>
+        <div class="dbody"><p>Windows PowerShell 5.1 傳參數給 <code>ssh.exe</code> 時會丟掉內層雙引號，像 <code>ssh host 'bash -lc "…"'</code> 會變形。改用 Git Bash，或把遠端指令寫成腳本用 <code>ssh host 'bash -s' &lt; script.sh</code> 送過去。</p></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ Prompt ============ -->
+  <section class="panel" id="prompt" role="tabpanel" aria-labelledby="t-prompt" hidden>
+    <div class="stack">
+      <div class="card stack">
+        <h2>交給 agent 一次做完</h2>
+        <p>在 Windows 筆電上開 Claude Code（desktop app 或終端機皆可），選要裝哪一套、填好下面的值，複製 prompt 貼給它。沒填的欄位會保留成 <code>&lt;代號&gt;</code>，agent 會先問你。值只存在你的瀏覽器，不會上傳。</p>
+        <div class="chips" role="group" aria-label="選擇 prompt">
+          <button class="pchip chip" type="button" data-tpl="prompt-tpl" aria-pressed="true">agent-deck + Windows Terminal + VS Code</button>
+          <button class="pchip chip" type="button" data-tpl="prompt-tpl-herdr" aria-pressed="false">herdr</button>
+        </div>
+        <p class="small muted" id="tpl-hint">這份會用到全部欄位。</p>
+        <div class="vars">
+          <label for="v-host"><b>&lt;HOST&gt;</b>伺服器 IP 或主機名稱<input id="v-host" data-k="HOST" placeholder="10.x.x.x"></label>
+          <label for="v-user"><b>&lt;USER&gt;</b>SSH 帳號<input id="v-user" data-k="USER" placeholder="alice"></label>
+          <label for="v-sshport"><b>&lt;SSH_PORT&gt;</b>SSH port<input id="v-sshport" data-k="SSH_PORT" placeholder="22"></label>
+          <label for="v-key"><b>&lt;KEY&gt;</b>筆電私鑰路徑<input id="v-key" data-k="KEY" placeholder="C:\Users\alice\.ssh\id_ed25519"></label>
+          <label for="v-alias"><b>&lt;ALIAS&gt;</b>SSH 別名／分頁名稱<input id="v-alias" data-k="ALIAS" placeholder="devbox"></label>
+          <label for="v-port"><b>&lt;PORT&gt;</b>agent-deck 網頁 port<input id="v-port" data-k="PORT" placeholder="8420"></label>
+          <label for="v-root"><b>&lt;REPO_ROOT&gt;</b>伺服器上 repo 根目錄（絕對路徑）<input id="v-root" data-k="REPO_ROOT" placeholder="/home/alice/repository"></label>
+          <label for="v-repos"><b>&lt;REPOS&gt;</b>VS Code 要顯示的 repo（相對路徑，逗號分隔；留空則讓 agent 列出來給你選）<input id="v-repos" data-k="REPOS" placeholder="app-api, tools/cli"></label>
+          <label for="v-test"><b>&lt;TEST_REPO&gt;</b>herdr 驗收用的 repo（伺服器上的絕對路徑）<input id="v-test" data-k="TEST_REPO" placeholder="/home/alice/repository/app-api"></label>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="copy-prompt" type="button">複製 prompt</button>
+          <button class="btn ghost" id="clear-vars" type="button">清除填寫</button>
+          <span class="small muted" id="copy-msg" role="status"></span>
+        </div>
+      </div>
+      <pre id="prompt-out"></pre>
+    </div>
+  </section>
+</div>
+
+<script type="text/plain" id="prompt-tpl">請幫我在這台 Windows 筆電上完成「遠端 Agent 工作台」設定：用 Windows Terminal 透過 SSH 連到遠端 Linux 伺服器，在伺服器上用 agent-deck 管理 Claude Code／Codex 等 agent，並從筆電瀏覽器監控；再設定 VS Code（Remote-SSH + GitLens）開伺服器上的 repo 看 git 狀態。
+
+## 我的環境值
+- 伺服器位址 HOST：<HOST>
+- SSH 帳號 USER：<USER>
+- SSH port：<SSH_PORT>
+- 筆電私鑰 KEY：<KEY>
+- SSH 別名 ALIAS：<ALIAS>（另一個帶隧道的別名叫 <ALIAS>-deck）
+- agent-deck 網頁 port：<PORT>（伺服器只綁 127.0.0.1:<PORT>，筆電透過 SSH 隧道開 http://localhost:<PORT>）
+- 伺服器上 repo 根目錄 REPO_ROOT：<REPO_ROOT>
+- VS Code 要顯示的 repo：<REPOS>
+仍是 <…> 形式的值代表我還沒填，請先一次問完再開始。
+
+## 規則（一定要遵守）
+1. 分階段做，每階段做完就驗證，通過才進下一階段；結果和預期不符時停下來告訴我，不要自己繞路。
+2. 不要動伺服器上我現有的 tmux session：禁止 tmux kill-server，只能 kill 你自己建立的 session。
+3. 修改任何既有檔案前先備份成 <檔名>.bak-YYYYMMDD-HHMMSS；加進既有檔案的內容用「# >>> agent-workflow >>>」「# <<< agent-workflow <<<」標記區塊包起來。
+4. 需要 sudo 的指令先問我。不要把 <PORT> 開到 127.0.0.1 以外，不要改防火牆。
+5. 需要互動的步驟交給我：第一次 SSH 的 host key 確認、輸入密碼、claude/codex 登入、agent-deck 第一次啟動的遙測詢問。
+6. 從筆電對伺服器下指令一律用非互動的 ssh <ALIAS> '...'。注意 Windows PowerShell 5.1 會吃掉傳給 ssh.exe 的內層雙引號：遠端指令有巢狀引號時改用 Git Bash，或用 ssh <ALIAS> 'bash -s' 搭配 heredoc。
+7. 不要把 agent-deck 的 token 寫進 prompt 回覆、會同步或分享的檔案。
+8. 不要在開機啟動資料夾或排程裡建立常駐程式，除非我明確同意。
+
+## Phase 0：檢查
+- 筆電：ssh -V、Windows Terminal 是否安裝（wt）、settings.json 位置（%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json 或 %LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json）、~/.ssh/config 是否已有同一台主機的 Host（有的話問我要沿用還是新增別名）、VS Code 是否有 Remote - SSH 與 GitLens 擴充套件。
+- 伺服器：OS、tmux 版本（需 ≥ 3.3，太舊就回報我）、jq、curl、tmux ls、<PORT> 是否被占用。
+- 分別在「登入 shell」（bash -lc）與「互動 shell」（bash -ic）檢查 command -v claude codex。如果只有互動 shell 找得到，記下所在目錄，Phase 2 要加進 ~/.profile。
+
+## Phase 1：筆電 SSH
+在 ~/.ssh/config 加入標記區塊：Host <ALIAS> 與 Host <ALIAS>-deck，兩者都有 HostName/User/Port/IdentityFile 與 ServerAliveInterval 30、ServerAliveCountMax 4；只有 <ALIAS>-deck 多一行 LocalForward <PORT> 127.0.0.1:<PORT>。
+驗證：用 Windows 內建 ssh.exe 執行 ssh -o BatchMode=yes <ALIAS> echo ok。
+
+## Phase 2：伺服器 PATH 與 tmux
+- 若 Phase 0 發現 claude/codex 不在登入 shell 的 PATH：在 ~/.profile 加標記區塊，把該目錄與 $HOME/.local/bin 加進 PATH（用 case 判斷避免重複）。驗證 bash -lc 'command -v claude codex'。
+- ~/.tmux.conf 加標記區塊：set -g mouse on、set -g allow-passthrough on、set -s extended-keys on、set -as terminal-features 'xterm*:extkeys'。tmux server 在跑就 tmux source-file ~/.tmux.conf。
+- 驗證：tmux -f ~/.tmux.conf -L agentcheck new -d -s t && tmux -L agentcheck show -g allow-passthrough; tmux -L agentcheck kill-server，應輸出 allow-passthrough on。
+
+## Phase 3：安裝 agent-deck（https://github.com/asheshgoplani/agent-deck）
+- 先把 https://raw.githubusercontent.com/asheshgoplani/agent-deck/main/install.sh 下載到伺服器暫存檔，讀過內容（特別是會不會呼叫 sudo），確認 tmux 與 jq 已存在後，再執行 bash <檔案> --non-interactive --skip-tmux-config。驗證 bash -lc 'agent-deck version'。
+- 備份 ~/.claude/settings.json 與 ~/.codex/config.toml，然後 agent-deck hooks install、agent-deck codex-hooks install，並用 status 確認；確認 Claude 設定仍是合法 JSON、原本設定（含 statusLine）都在。
+- 建立 token：install -d -m 700 ~/.config/agent-deck; install -m 600 /dev/null ~/.config/agent-deck/web-token; head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > ~/.config/agent-deck/web-token（已存在就保留）。
+
+## Phase 4：啟動腳本 ~/.local/bin/deck-up（權限 755）
+重要：新版 agent-deck 的 TUI 拒絕在 tmux 裡執行，所以網頁伺服器用 --no-tui 常駐在 tmux session「deck」，TUI 在 SSH 終端機裡直接跑；並用 -e "PATH=$PATH" 把登入 shell 的 PATH 帶進 tmux，否則 agent-deck 找不到 claude。內容：
+
+#!/usr/bin/env bash
+if ! tmux has-session -t deck 2>/dev/null; then
+  tmux new-session -d -s deck -e "PATH=$PATH" \
+    "$HOME/.local/bin/agent-deck web --no-tui --push --listen 127.0.0.1:<PORT> --token-file $HOME/.config/agent-deck/web-token"
+  sleep 1
+fi
+tmux has-session -t deck 2>/dev/null && echo "agent-deck web: running (tmux session deck, 127.0.0.1:<PORT>)"
+[ -n "$TMUX" ] && exit 0
+"$HOME/.local/bin/agent-deck"
+exec bash -l
+
+驗證：bash -lc 'command -v deck-up'。不要用 TMUX=x 之類的技巧跳過 TUI（tmux 會把 $TMUX 當 socket 路徑）。若要在這一步先把網頁伺服器帶起來，必須透過登入 shell 執行 tmux new-session 那一行，並檢查 /proc/<pane_pid>/environ 的 PATH 含有 claude 所在目錄、127.0.0.1:<PORT> 回 HTTP 200。
+
+## Phase 5：Windows Terminal
+備份 settings.json（JSONC，保留註解與既有設定），在 profiles.list 加兩個 profile（GUID 用 [guid]::NewGuid() 產生），不要改 defaultProfile：
+- name「<ALIAS> · deck」，commandline: ssh -t <ALIAS>-deck "bash -lc ~/.local/bin/deck-up"，bellStyle ["window","taskbar"]，tabTitle "deck"，suppressApplicationTitle true
+- name「<ALIAS> · shell」，commandline: ssh <ALIAS>，bellStyle ["window","taskbar"]
+驗證：用 PowerShell 解析 JSON 成功；幫我用 wt -w 0 nt -p "{deck 的 GUID}" 開 deck 分頁，數秒後 curl.exe -s -o NUL -w "%{http_code}" http://localhost:<PORT>/ 應回 200。若失敗，到伺服器用 tmux capture-pane 與 ~/.local/share/agent-deck/logs/ 找原因再回報。
+最後告訴我：用 ssh <ALIAS> cat ~/.config/agent-deck/web-token 取得 token（我自己執行），瀏覽器開 http://localhost:<PORT>/?token=<token>，再到 Tweaks 開 Notifications。
+
+## Phase 6：VS Code
+- 備份 %APPDATA%\Code\User\settings.json，加入 "remote.SSH.remotePlatform": {"<ALIAS>": "linux"} 與 "remote.portsAttributes": {"<PORT>": {"label": "agent-deck (use <ALIAS>-deck tunnel)", "onAutoForward": "ignore"}}（已有同名物件就合併）。
+- 列出 <REPO_ROOT> 底下所有 git repo（含子資料夾，排除 .worktrees、.claude/worktrees、.venv、node_modules 這類 worktree 或第三方套件），編號給我選；若我已填 <REPOS> 就直接用。
+- 在伺服器建立 <REPO_ROOT>/<ALIAS>.code-workspace（已存在就不要覆蓋，先問我），folders 列出選定的 repo（相對路徑），加一行註解說明增刪方式。
+- 用 code --file-uri "vscode-remote://ssh-remote+<ALIAS><REPO_ROOT>/<ALIAS>.code-workspace" 開啟。VS Code 一律用 <ALIAS>，不要用 <ALIAS>-deck。
+
+## 完成後的報告
+1. 筆電與伺服器各改了哪些檔案，以及每個檔案的備份路徑。
+2. 每個 Phase 的驗證結果與遇到的問題。
+3. 日常用法：開「<ALIAS> · deck」並保持開著 → 瀏覽器 http://localhost:<PORT> → 網頁 + New 開 agent；VS Code 從 Open Recent 開 workspace。
+4. 更新：agent-deck update，然後 tmux kill-session -t deck 再重開 deck 分頁。移除：agent-deck hooks uninstall、agent-deck codex-hooks uninstall、agent-deck uninstall（--keep-data 保留資料）、刪 deck-up，並移除各檔案的 agent-workflow 標記區塊。</script>
+
+<script type="text/plain" id="prompt-tpl-herdr">請幫我在這台 Windows 筆電上設定 herdr（https://github.com/herdrdev/herdr，agent 專用的終端機多工器）：herdr 裝在遠端 Linux 伺服器上，我用 Windows Terminal 透過 SSH 連進去執行 herdr（模式 A），在裡面跑 Claude Code 和 Codex，側欄自動顯示每個 agent 的狀態（working / blocked / done / idle），agent 之間也能用 herdr CLI 互相傳訊息。
+
+## 我的環境值
+- 伺服器位址 HOST：<HOST>
+- SSH 帳號 USER：<USER>
+- SSH port：<SSH_PORT>
+- 筆電私鑰 KEY：<KEY>
+- SSH 別名 ALIAS：<ALIAS>
+- 驗收用的 repo（伺服器上的絕對路徑）：<TEST_REPO>
+仍是 <…> 形式的值代表我還沒填，請先一次問完再開始。也請一併問我：要不要做模式 B（Windows 原生 herdr），以及要不要裝 herdr skill（讓 Claude 能用 herdr 指揮其他 agent）。預設只做模式 A + skill。
+
+## 規則（一定要遵守）
+1. 分階段做，每階段做完就驗證，通過才進下一階段；結果和預期不符時停下來告訴我，不要自己繞路。
+2. 不要動伺服器上我現有的 tmux session 或 agent-deck：禁止 tmux kill-server、不要 kill 不是你建立的 session、不要移除 agent-deck。herdr 和它們可以並存。
+3. 不要在 herdr 的 pane 裡再跑 tmux。
+4. 修改任何既有檔案前先備份成 <檔名>.bak-YYYYMMDD-HHMMSS；加進既有檔案的內容用「# >>> herdr-setup >>>」「# <<< herdr-setup <<<」標記區塊包起來。
+5. 需要 sudo 的指令先問我；在 Windows 安裝任何軟體也要先問。
+6. 需要互動的步驟交給我：第一次 SSH 的 host key 確認、密碼、claude/codex 登入、herdr 第一次啟動的問題、Codex 的 Hooks 審核與指令授權對話框。
+7. 從筆電對伺服器下指令一律用非互動的 ssh <ALIAS> '...'；不要用非互動方式直接執行 herdr（它會開互動畫面）。Windows PowerShell 5.1 會吃掉傳給 ssh.exe 的內層雙引號：遠端指令有巢狀引號時改用 Git Bash，或用 ssh <ALIAS> 'bash -s' 搭配 heredoc。
+8. 不要執行 herdr server stop、herdr update，或任何會讓 herdr 伺服器重啟的事，除非我明確同意。
+9. 不要修改 repo 的 CLAUDE.md、AGENTS.md，也不要自行修改 ~/.codex/AGENTS.md。
+10. 下載的安裝腳本一律先存成檔案、讀過內容（確認會不會呼叫 sudo、改哪些檔案）再執行，不要 curl | sh。
+
+## Phase 0：檢查
+- 筆電：ssh -V、wt 是否存在、Windows Terminal settings.json 位置（%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json 或 %LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json）、~/.ssh/config 是否已有指向 <HOST> 的 Host（有就問我要沿用哪個別名）。
+- 伺服器：uname -sm（必須是 x86_64 或 aarch64）、OS、bash -lc 'command -v claude codex herdr' 與版本、~/.claude 與 ~/.codex 是否存在（不存在就請我先登入一次）、CLAUDE_CONFIG_DIR / CODEX_HOME 是否有設、tmux ls（只記錄不要動）、~/.claude/settings.json 目前有哪些 hooks 與 statusLine（之後要比對）。
+
+## Phase 1：SSH
+若 <ALIAS> 已存在且 ssh -o BatchMode=yes <ALIAS> echo ok 成功就沿用；否則備份 ~/.ssh/config，加入標記區塊：Host <ALIAS>，HostName/User/Port/IdentityFile，加上 ServerAliveInterval 30、ServerAliveCountMax 4。herdr 不需要 LocalForward。
+
+## Phase 2：伺服器安裝 herdr
+把 https://herdr.dev/install.sh 下載到伺服器暫存檔，讀過後用 sh 執行（預設裝到 ~/.local/bin，會驗證 SHA-256）。驗證 bash -lc 'herdr --version'。登入 shell 找不到的話，問我要不要在 ~/.profile 用標記區塊把 $HOME/.local/bin 加進 PATH。維持 stable 頻道。
+
+## Phase 3：integration
+先備份 ~/.claude/settings.json、~/.codex/config.toml、~/.codex/hooks.json（若有）。執行 herdr integration install claude、herdr integration install codex、herdr integration status（claude 與 codex 應為 current）。
+驗證：Claude 設定仍是合法 JSON；用 jq 比對備份，除了 hooks 以外的設定完全沒變；原本的 hooks（包含 agent-deck 的 hook-handler，如果有）與 statusLine 都還在；Codex 的 config.toml 只多了 [features] hooks = true。
+
+## Phase 4：herdr skill（我同意才做）
+mkdir -p ~/.claude/skills/herdr && herdr --skill > ~/.claude/skills/herdr/SKILL.md（目錄已存在就先問我）。伺服器沒有 Node 也沒關係，不要用 npx。
+
+## Phase 5：Windows Terminal（模式 A）
+備份 settings.json（JSONC，保留註解與既有設定），在 profiles.list 加一個 profile，GUID 用 [guid]::NewGuid() 產生，不要改 defaultProfile：
+name「<ALIAS> · herdr」，commandline: ssh -t <ALIAS> "bash -lc herdr"，bellStyle ["window","taskbar"]，tabTitle "herdr"，suppressApplicationTitle true。
+驗證：用 PowerShell 解析 JSON 成功；幫我用 wt -w 0 nt -p "{該 GUID}" 開分頁，數秒後在伺服器確認 pgrep -a herdr 有 herdr server，且 ~/.config/herdr/herdr-server.log 出現 client connected。
+
+## Phase 6：模式 B（我同意才做）
+先問我。把 https://herdr.dev/install.ps1 下載成檔案讀過，再用 powershell -NoProfile -ExecutionPolicy Bypass -File 執行（只裝在使用者目錄、會改使用者 PATH）。若出現 Access is denied 或被防毒擋下，那是公司安全政策：停下來告訴我，不要繞過，改用模式 A，並告訴我殘留的 %USERPROFILE%\.herdr 可以自行刪除。成功的話請我自己在新的 Windows Terminal 執行 herdr machine add <ALIAS>，並在 %APPDATA%\herdr\config.toml 用標記區塊加入 [ui.toast] delivery = "system"。
+
+## Phase 7：教我用並一起驗收
+先用繁體中文簡短教我：工作區／分頁／pane、四種狀態、滑鼠操作、Ctrl+B 前綴快捷鍵（? c v - h j k l z x Shift+N w g b q）。然後逐項請我操作並記錄結果：
+1. 在 pane 執行 cd <TEST_REPO> && claude，給小任務，狀態應 working → done → idle。
+2. 叫 claude 做需要授權的事，狀態應變 blocked（若顯示 idle 記錄下來，這是已知限制）。
+3. 另一個 pane 執行 codex --no-daemon。提醒我：第一次會跳 Hooks 審核（herdr 的 hook），按 t 信任。
+4. Ctrl+B 再按 g，點某個 agent 能跳過去。
+5. 關掉分頁再重開「<ALIAS> · herdr」，agent 還在。
+6. agent 溝通 demo：在 <TEST_REPO> 開一個 agent-demo 工作區（herdr workspace create --cwd <TEST_REPO> --label agent-demo --focus），用 herdr pane split 切出右邊 pane，用 herdr agent start alice --kind claude 與 herdr agent start bob --kind codex -- --no-daemon 各開一個；用 herdr agent prompt alice "用 herdr 傳 hi 給名叫 bob 的 agent，讀它的回覆並告訴我" --wait 讓兩邊互傳，再用 herdr agent read 讀畫面給我看。注意：prompt 一定要提到 herdr，否則 Claude 會改用自己的跨 session 訊息功能；Codex 沙盒擋 herdr CLI 時會停在 blocked 詢問畫面，先用 herdr agent read <名字> --source visible 看清楚，再問我要按 y（只允許這次）還是 p（以後不問），不要自己替我決定 p。Claude 輸入框裡的灰字只是建議輸入，不是我打的。
+
+## 完成後的報告
+1. 筆電與伺服器各改了哪些檔案，以及每個檔案的備份路徑。
+2. herdr 的版本與安裝位置。
+3. 每個 Phase 與驗收項目的結果、錯誤訊息。
+4. 日常用法：開「<ALIAS> · herdr」→ 每個 repo 一個工作區 → pane 裡跑 claude 或 codex --no-daemon → 看側欄，Ctrl+B g 跳到要處理的 agent；要 agent 互相溝通時 prompt 裡寫「用 herdr …」。
+5. 重開機：herdr 不會隨開機啟動；開「<ALIAS> · herdr」就會啟動並還原版面、接回 Claude/Codex 對話，重開機前正在跑的指令會中斷。
+6. 更新：herdr update 前先讓 agent 停在可中斷的地方。移除：herdr server stop（要先問我）、herdr integration uninstall claude / codex、從備份還原 Codex config.toml、刪除 herdr 執行檔與 ~/.claude/skills/herdr、問我要不要刪 ~/.config/herdr、刪 Windows Terminal profile。</script>
+
+<script>
+(function(){
+  // ---- tabs ----
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  function show(id,push){
+    tabs.forEach(function(t){
+      var on=t.getAttribute('aria-controls')===id;
+      t.setAttribute('aria-selected',on?'true':'false');
+      t.tabIndex=on?0:-1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden=!on;
+    });
+    if(push){try{history.replaceState(null,'','#'+id)}catch(e){}}
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(){show(t.getAttribute('aria-controls'),true)});
+    t.addEventListener('keydown',function(e){
+      var d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0; if(!d)return;
+      var n=tabs[(i+d+tabs.length)%tabs.length]; n.focus(); n.click();
+    });
+  });
+  var h=(location.hash||'').slice(1);
+  show(document.getElementById(h)&&document.querySelector('[aria-controls="'+h+'"]')?h:'overview',false);
+
+  // ---- chip groups (each .chips group switches its own panels) ----
+  [].slice.call(document.querySelectorAll('.chips')).forEach(function(group){
+    var chips=[].slice.call(group.querySelectorAll('.chip[data-ui]'));
+    chips.forEach(function(c){c.addEventListener('click',function(){
+      chips.forEach(function(o){
+        var on=o===c; o.setAttribute('aria-pressed',on?'true':'false');
+        document.getElementById(o.dataset.ui).hidden=!on;
+      });
+    })});
+  });
+
+  // ---- copy helpers ----
+  function copyText(text,btn,done){
+    function ok(){ if(btn){var o=btn.textContent;btn.textContent='已複製';setTimeout(function(){btn.textContent=o},1400)} if(done)done(true) }
+    function fail(el){ if(el){var r=document.createRange();r.selectNodeContents(el);var s=getSelection();s.removeAllRanges();s.addRange(r)} if(done)done(false) }
+    try{ navigator.clipboard.writeText(text).then(ok,function(){fail(btn&&btn.previousElementSibling)}) }catch(e){ fail(btn&&btn.previousElementSibling) }
+  }
+  [].slice.call(document.querySelectorAll('.code')).forEach(function(box){
+    var pre=box.querySelector('pre'); var b=document.createElement('button');
+    b.type='button'; b.className='copy'; b.textContent='複製';
+    b.addEventListener('click',function(){copyText(pre.innerText,b)});
+    box.appendChild(b);
+  });
+
+  // ---- prompt builder ----
+  var tplId='prompt-tpl';
+  var hints={'prompt-tpl':'這份會用到 TEST_REPO 以外的所有欄位。','prompt-tpl-herdr':'這份只用到 HOST、USER、SSH_PORT、KEY、ALIAS、TEST_REPO。'};
+  var inputs=[].slice.call(document.querySelectorAll('.vars input'));
+  var out=document.getElementById('prompt-out');
+  var KEY='agent-workbench-vars';
+  try{var saved=JSON.parse(localStorage.getItem(KEY)||'{}');inputs.forEach(function(i){if(saved[i.dataset.k])i.value=saved[i.dataset.k]})}catch(e){}
+  var pchips=[].slice.call(document.querySelectorAll('.pchip'));
+  pchips.forEach(function(c){c.addEventListener('click',function(){
+    pchips.forEach(function(o){o.setAttribute('aria-pressed',o===c?'true':'false')});
+    tplId=c.dataset.tpl; document.getElementById('tpl-hint').textContent=hints[tplId]; render();
+  })});
+  document.getElementById('tpl-hint').textContent=hints[tplId];
+  function render(){
+    var tpl=document.getElementById(tplId).textContent;
+    var v={}; inputs.forEach(function(i){v[i.dataset.k]=i.value.trim()});
+    var text=tpl.replace(/<(HOST|USER|SSH_PORT|KEY|ALIAS|PORT|REPO_ROOT|REPOS|TEST_REPO)>/g,function(m,k){
+      if(k==='REPOS'&&!v[k])return '（未指定，請列出來讓我選）';
+      return v[k]||m;
+    });
+    out.textContent=text;
+    try{localStorage.setItem(KEY,JSON.stringify(v))}catch(e){}
+    return text;
+  }
+  inputs.forEach(function(i){i.addEventListener('input',render)});
+  render();
+  var msg=document.getElementById('copy-msg');
+  document.getElementById('copy-prompt').addEventListener('click',function(){
+    copyText(render(),null,function(ok){msg.textContent=ok?'已複製到剪貼簿':'已選取全文，請按 Ctrl+C';if(!ok){var r=document.createRange();r.selectNodeContents(out);var s=getSelection();s.removeAllRanges();s.addRange(r)}});
+  });
+  document.getElementById('clear-vars').addEventListener('click',function(){inputs.forEach(function(i){i.value=''});render();msg.textContent='已清除'});
+})();
+</script>
+
+</html>

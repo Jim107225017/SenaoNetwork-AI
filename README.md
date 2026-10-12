@@ -7,6 +7,7 @@
 | 主題 | 說明 |
 |---|---|
 | [遠端 Agent 工作台](guides/remote-agent-workbench/) | 在遠端 Linux 伺服器跑 Claude Code／Codex，從 Windows 筆電用 agent-deck（瀏覽器）或 herdr（終端機）管理 agent，Windows Terminal 走 SSH，VS Code + GitLens 看 git 狀態。含一鍵設定 prompt。 |
+| [Outlook 會議預約](guides/outlook-meeting-booking/) | Claude Code skill：用傳統版 Outlook 依優先順序訂會議室、邀請多位參與者、檢查有沒有空、確認會議室接受，寄出前一定先問你。 |
 
 ## 怎麼用這個 repo
 

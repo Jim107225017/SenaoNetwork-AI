@@ -74,11 +74,14 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 - 可以先用 `-DryRun` 驗證收件人能不能解析，這個模式不會存檔。
 
 ### 6. 寄出（必須經過確認）
-- **需要 Teams**：請使用者在每個會議視窗點「Teams 會議」，然後按傳送。之後用 `list-meetings.ps1` 確認 `Sent = True`。
+- **需要 Teams**：請使用者在每個會議視窗點「Teams 會議」，然後按傳送。
 - **不需要 Teams**：列出要寄出的每一場，使用者說「寄出」後才執行：
   ```powershell
   & ... "$S\send-meeting.ps1" -EntryId "<id1>,<id2>"
   ```
+- **必須確認真的寄出了，不能只看指令有沒有報錯**。`Item.Send()` 可能沒報錯，實際上卻沒有寄出任何信（從其他資料檔搬過來的會議就發生過）。
+  - `send-meeting.ps1` 會到寄件備份確認。結果是 `NOT VERIFIED` 時，**不可以回報成功**，要改用 `-Display` 開啟會議視窗，請使用者自己按「傳送」或「傳送更新」。
+  - 使用者手動送出的會議，`list-meetings.ps1` 的 `Sent` 欄位不能當作依據（第一次寄出後就一直是 True，之後的更新有沒有寄出都看不出來）。要用步驟 7 的會議室回覆和會議室的空檔狀態確認。
 
 ### 7. 確認會議室有沒有接受預約
 寄出後等 1 到 2 分鐘再查：
@@ -86,11 +89,13 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 & ... "$S\check-room-responses.ps1" -Subject "Daily Sync Up" -Since "2026-10-12 09:00"
 ```
 `-Since` 填寄出前的時間。每間會議室、每個日期只會顯示最新一次的回覆，所以會議室先拒絕、後來又接受更新時，結果會是接受。
+
+同時用 `check-availability.ps1 -Rooms <房號>` 查會議室在該時段的狀態：預約成功後應該變成 `busy` 或 `tentative`。如果寄出幾分鐘後會議室還是 `free`、也沒有回信，就代表會議室沒有收到預約，回到步驟 6 處理。
 - `accepted`：完成。
 - `declined`：依優先順序找下一間 `free` 的會議室，然後問使用者要不要改成那一間。使用者同意後依序：
   1. 用 `list-meetings.ps1` 取得該場會議的 EntryId。
   2. 執行 `change-room.ps1 -EntryId <id> -NewRoomAddress <room smtp>`。這一步只修改會議並存檔，不會寄出。
-  3. 執行 `send-meeting.ps1 -EntryId <id>` 寄出更新。使用者同意改會議室，就代表同意寄出這次更新。
+  3. 執行 `send-meeting.ps1 -EntryId <id>` 寄出更新。使用者同意改會議室，就代表同意寄出這次更新。結果是 `NOT VERIFIED` 時，比照步驟 6 處理。
   4. 回到步驟 7，再確認一次新會議室的回覆。
 - **沒有回覆**：告訴使用者哪幾場還沒收到會議室的回覆，並提議稍後再查。
 
@@ -106,3 +111,5 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 - 字串傳給 Outlook COM 前，必須是單純的 `[string]`。`_common.ps1` 的 `Split-List` 已經處理；自己另外寫指令時，經過管線處理的字串要先轉型，否則 `CreateRecipient` 會卡住。
 - PowerShell 變數名稱不分大小寫，所以不要用 `$since` 去接 `[string]$Since` 參數轉型後的值，否則日期會被轉回字串。
 - 會議回覆郵件裡的會議開始時間（屬性 820D0040），讀出來就已經是本地時間，不要再轉換時區。
+- **絕對不要把已寄出的會議在資料檔之間搬移**（例如從本機 PST 搬到 Exchange 行事曆）。搬過去的會議會變成「複製」的副本（`MeetingStatus = 3`，畫面會顯示「此會議已複製到您的行事曆，將不接收更新」），失去主辦人身分，之後不能再寄更新或取消，`Send()` 也不會報錯。萬一會議被建在錯的資料檔，就讓它留在原處，從原處修改；並請使用者把預設資料檔改成 Exchange 信箱。
+- 改會議室或時間前，先確認 `MeetingStatus` 是 1（主辦人的會議）。如果是 3，代表無法寄出更新，要改成重新建立一場會議，並告訴使用者舊的邀請要另外處理。

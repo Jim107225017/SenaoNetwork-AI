@@ -12,18 +12,18 @@ $S = "$HOME\.claude\skills\outlook-meeting-booking\scripts"
 powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>.ps1" <參數>
 ```
 
-清單參數一律用逗號分隔的單一字串，例如 `-Names "王小明,a@corp.com"`。下文範例中的 `& ... "$S\x.ps1"` 都是上面這行呼叫的縮寫。
+清單參數一律用逗號分隔的單一字串，例如 `-Names "黃子育,a@corp.com"`。下文範例中的 `& ... "$S\x.ps1"` 都是上面這行呼叫的縮寫。
 
 ## 預設值
 
-- **會議室優先順序**：`<你的會議室，例如 909,901,812>`。安裝後改成自己常用的會議室，填會議室名稱括號內的房號，或任何能唯一比對到該會議室的關鍵字。每次都要先問使用者這次要不要沿用。
+- **會議室優先順序**：`909`、`901`、`812`（南港廠9F 909 → 南港廠9F 901 → 南港廠8F 812）。每次都要先問使用者這次要不要沿用。
 - **信箱**：自動使用 Outlook 中的 Exchange 帳號。
 
 ## 硬性規則
 
 1. **寄出前一定要問**。建立會議只會存成未寄出；寄出邀請、寄出更新（改會議室、改時間）都要等使用者明確說「寄出」或同意，才可以執行 `send-meeting.ps1`。同意只對當次有效。
-2. **會議一律建在 Exchange 信箱的行事曆**，不可以用 `Application.CreateItem`。有些電腦的 Outlook 預設資料檔是本機 PST，用預設位置建立的會議只會存在這台電腦。`new-meeting.ps1` 已經處理好這件事。
-3. **Teams 連結無法用程式加**。需要 Teams 時，用 `-Display` 開啟會議視窗，請使用者點「Teams 會議」後自己按傳送。這時不要再執行 `send-meeting.ps1`，避免重複寄出。
+2. **會議一律建在 Exchange 信箱的行事曆**，不可以用 `Application.CreateItem`。這台電腦的 Outlook 預設資料檔是本機 PST，用預設位置建立的會議只會存在這台電腦。`new-meeting.ps1` 已經處理好這件事。
+3. **Teams 連結要用 `add-teams-link.ps1` 加**。Outlook 物件模型本身加不了 Teams 連結，這支腳本是用 UI Automation 替使用者按下會議視窗上的「Teams 會議」按鈕（會短暫開啟會議視窗再自動關閉）。腳本回報 `failed` 時才退回手動流程：用 `-Display` 開啟會議視窗，請使用者點「Teams 會議」後自己按傳送，這時不要再執行 `send-meeting.ps1`，避免重複寄出。
 4. 不要刪除會議或郵件，也不要動使用者自己開著、跟本次任務無關的 Outlook 視窗。
 
 ## 流程
@@ -36,11 +36,11 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 - 參與者：可以多位，分必要和選擇性
 - 要不要 Teams 連結
 - 議程內文（選填）
-- **會議室優先順序**：提供上面設定的預設順序讓使用者確認或修改
+- **會議室優先順序**：提供預設值「909 → 901 → 812」讓使用者確認或修改
 
 ### 2. 解析參與者
 ```powershell
-& ... "$S\resolve-people.ps1" -Names "王小明,someone@<company>.com"
+& ... "$S\resolve-people.ps1" -Names "黃子育,王小明,someone@senao.com"
 ```
 - `ok`：取得 Smtp，後續都用 email。
 - `ambiguous`：列出候選人請使用者選。
@@ -50,12 +50,12 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 ### 3. 檢查參與者和會議室有沒有空
 ```powershell
 & ... "$S\check-availability.ps1" -Dates "2026-10-13,2026-10-14" -Start 10:00 -End 10:30 `
-    -People "a@<company>.com,b@<company>.com" -Rooms "<room1>,<room2>,<room3>"
+    -People "a@senao.com,b@senao.com" -Rooms "909,901,812"
 ```
 - Status 有：`free`、`tentative`、`busy`、`oof`（外出）、`elsewhere`（在其他地方工作）、`unknown`（沒有權限查看）、`unresolved`。
 - **參與者**：只要是 `busy` 或 `oof`，就列出衝突的日期和人，問使用者要繼續、換時間還是略過那天。`tentative` 也要提醒，但可以繼續。
 - **會議室**：每一天依優先順序取第一間 `free` 的會議室。三間都沒空時，用全部會議室清單查同樓層或附近有空的會議室給使用者選：
-  `-Rooms` 可以傳任何房號，或用 `"<棟別樓層>"` 這類關鍵字。關鍵字比對到多間時，Note 欄會列出比對到的會議室。
+  `-Rooms` 可以傳任何房號，或用 `"南港廠9F"` 這類關鍵字。關鍵字比對到多間時，Note 欄會列出比對到的會議室。
 - 解讀時要注意：使用者自己已經訂好的會議，也會讓會議室顯示 `busy`、讓參與者顯示 `tentative`（邀請還沒回覆時）。重新檢查之前已經預約的時段前，先用 `list-meetings.ps1` 比對。
 
 ### 4. 給使用者確認表
@@ -65,17 +65,26 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 建立之前，先對要用的會議室再跑一次 `check-availability.ps1`，避免會議室在這段時間被別人訂走。
 ```powershell
 & ... "$S\new-meeting.ps1" -Subject "Daily Sync Up" -Date 2026-10-13 -Start 10:00 -End 10:30 `
-    -Required "a@<company>.com,b@<company>.com" -Optional "c@<company>.com" -RoomAddress <room-email> `
+    -Required "a@senao.com,b@senao.com" -Optional "c@senao.com" -RoomAddress 30909@senao.com `
     [-Body "議程"] [-Display]
 ```
 - 會議室 email 從 `check-availability.ps1` 輸出的 `Address` 取得。
-- 需要 Teams 時加 `-Display`。
 - 每一場都要記下輸出的 `EntryId`。
 - 可以先用 `-DryRun` 驗證收件人能不能解析，這個模式不會存檔。
+- 不要加 `-Display`，除非是 Teams 連結自動加失敗、要請使用者手動處理。
+
+### 5b. 加 Teams 連結（需要 Teams 時）
+每一場各跑一次：
+```powershell
+& ... "$S\add-teams-link.ps1" -EntryId "<id>"
+```
+- 會開啟會議視窗、按下「Teams 會議」、等連結寫入、存檔、關閉視窗，通常 2 到 5 秒。執行期間請使用者不要操作 Outlook。
+- `Status`：`added`（成功）、`already-present`（本來就有，沒有動）、`failed`（看 `Note`，退回硬性規則 3 的手動流程；視窗會留著讓使用者自己按）。
+- 成功後會議的 `Location` 會多出「Microsoft Teams 會議」，內文會多出加入連結，這是正常的。
+- 同一場不要重複按：「Teams 會議」按鈕是開關，按第二次會把連結拿掉。腳本已經會先檢查，所以重跑是安全的。
 
 ### 6. 寄出（必須經過確認）
-- **需要 Teams**：請使用者在每個會議視窗點「Teams 會議」，然後按傳送。
-- **不需要 Teams**：列出要寄出的每一場，使用者說「寄出」後才執行：
+- 先確認需要 Teams 的每一場在步驟 5b 都是 `added` 或 `already-present`，再列出要寄出的每一場，使用者說「寄出」後才執行：
   ```powershell
   & ... "$S\send-meeting.ps1" -EntryId "<id1>,<id2>"
   ```
@@ -105,6 +114,7 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 ## 其他工具
 
 - `list-meetings.ps1 -Subject <主旨> -From <日期> -To <日期>`：列出已建立的會議，包含 EntryId、是否已寄出和收件人。
+- `add-teams-link.ps1 -EntryId <id> [-KeepOpen] [-TimeoutSec 30]`：幫已存檔的會議加 Teams 連結（見步驟 5b）。已寄出的會議也可以用，但之後要用 `send-meeting.ps1` 寄出更新。
 
 ## 已知問題
 
@@ -112,4 +122,5 @@ powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$S\<script>
 - PowerShell 變數名稱不分大小寫，所以不要用 `$since` 去接 `[string]$Since` 參數轉型後的值，否則日期會被轉回字串。
 - 會議回覆郵件裡的會議開始時間（屬性 820D0040），讀出來就已經是本地時間，不要再轉換時區。
 - **絕對不要把已寄出的會議在資料檔之間搬移**（例如從本機 PST 搬到 Exchange 行事曆）。搬過去的會議會變成「複製」的副本（`MeetingStatus = 3`，畫面會顯示「此會議已複製到您的行事曆，將不接收更新」），失去主辦人身分，之後不能再寄更新或取消，`Send()` 也不會報錯。萬一會議被建在錯的資料檔，就讓它留在原處，從原處修改；並請使用者把預設資料檔改成 Exchange 信箱。
+- `add-teams-link.ps1` 靠 UI Automation 找 class 為 `rctrl_renwnd32`、標題等於 `Inspector.Caption` 的視窗，再找名稱以「Teams」開頭的按鈕。Outlook 介面語言換掉或 Teams 增益集被停用（`File > Options > Add-ins > COM Add-ins` 的「Microsoft Teams Meeting Add-in for Microsoft Office」）時會找不到按鈕。連結有沒有加成功是看 MAPI 屬性 `SkypeTeamsMeetingUrl`，不是看內文。
 - 改會議室或時間前，先確認 `MeetingStatus` 是 1（主辦人的會議）。如果是 3，代表無法寄出更新，要改成重新建立一場會議，並告訴使用者舊的邀請要另外處理。
